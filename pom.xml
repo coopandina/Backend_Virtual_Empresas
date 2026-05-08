@@ -1,0 +1,336 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+         https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>3.3.6</version>
+        <relativePath/>
+    </parent>
+
+
+    <groupId>apiVirtualEmpresa</groupId>
+    <artifactId>apiVirtualEmpresa</artifactId>
+    <version>0.0.1-SNAPSHOT</version>
+    <packaging>jar</packaging>
+    <name>apiVirtualEmpresa</name>
+    <description>Virtual Empresas desarrollado por Ing.Oscar Moreira </description>
+
+    <properties>
+        <java.version>23</java.version>
+        <start-class>apiVirtualEmpresa.apiVirtualEmpresa.ApiVirtualEmpresaApplication</start-class>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+
+    </properties>
+
+    <dependencies>
+        <!-- Spring Boot Starter Data JPA - EXCLUIR LOGBACK -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-jpa</artifactId>
+            <exclusions>
+
+
+            </exclusions>
+        </dependency>
+
+        <!-- Spring Boot Starter Web - EXCLUIR TOMCAT, Servlet API y Logback -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+            <exclusions>
+
+
+
+
+                 <!-- NUEVO: Excluir autoconfiguracion de error -->
+
+
+
+            </exclusions>
+        </dependency>
+        <!-- Agregar autoconfigure de forma selectiva -->
+
+        <!-- Spring Boot DevTools -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-devtools</artifactId>
+            <scope>runtime</scope>
+            <optional>true</optional>
+        </dependency>
+
+        <!-- MySQL Connector -->
+        <dependency>
+            <groupId>com.mysql</groupId>
+            <artifactId>mysql-connector-j</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+
+        <!-- Lombok -->
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <optional>true</optional>
+        </dependency>
+
+        <!-- Librerías internas -->
+        <dependency>
+            <groupId>ApiVirtualEmpresas</groupId>
+            <artifactId>libsVirtual</artifactId>
+            <version>1.0.0</version>
+        </dependency>
+
+        <dependency>
+            <groupId>ApiVirtualEmpresas</groupId>
+            <artifactId>libSMS</artifactId>
+            <version>3.0.0</version>
+        </dependency>
+
+        <dependency>
+            <groupId>ApiVirtualEmpresas</groupId>
+            <artifactId>libEmailSms</artifactId>
+            <version>12.0.0</version>
+        </dependency>
+
+        <dependency>
+            <groupId>ApiVirtualEmpresas</groupId>
+            <artifactId>libClavesCore</artifactId>
+            <version>3.0.0</version>
+        </dependency>
+
+        <!-- JSON -->
+        <dependency>
+            <groupId>org.json</groupId>
+            <artifactId>json</artifactId>
+            <version>20240303</version>
+        </dependency>
+
+        <!-- JSON Web Token -->
+        <dependency>
+            <groupId>io.jsonwebtoken</groupId>
+            <artifactId>jjwt-api</artifactId>
+            <version>0.11.5</version>
+        </dependency>
+
+        <dependency>
+            <groupId>io.jsonwebtoken</groupId>
+            <artifactId>jjwt-impl</artifactId>
+            <version>0.11.5</version>
+            <scope>runtime</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>io.jsonwebtoken</groupId>
+            <artifactId>jjwt-jackson</artifactId>
+            <version>0.11.5</version>
+            <scope>runtime</scope>
+        </dependency>
+
+        <!-- Apache PDFBox -->
+        <dependency>
+            <groupId>org.apache.pdfbox</groupId>
+            <artifactId>pdfbox</artifactId>
+            <version>3.0.3</version>
+        </dependency>
+
+        <!-- JavaMail -->
+        <dependency>
+            <groupId>com.sun.mail</groupId>
+            <artifactId>javax.mail</artifactId>
+            <version>1.6.1</version>
+        </dependency>
+
+        <!-- Servlet API - WildFly la provee -->
+        <!--  <dependency>
+            <groupId>jakarta.servlet</groupId>
+            <artifactId>jakarta.servlet-api</artifactId>
+            <scope>provided</scope>
+        </dependency>-->
+
+
+        <!-- ================== LIBRERÍAS SRI / MITyC ================== -->
+        <dependency>
+            <groupId>sdx.sri</groupId>
+            <artifactId>srijava</artifactId>
+            <version>1.0</version>
+        </dependency>
+
+        <dependency>
+            <groupId>sdx.sri</groupId>
+            <artifactId>MITyCLibXADES</artifactId>
+            <version>1.1.7</version>
+        </dependency>
+
+        <dependency>
+            <groupId>sdx.sri</groupId>
+            <artifactId>MITyCLibAPI</artifactId>
+            <version>1.1.7</version>
+        </dependency>
+
+        <dependency>
+            <groupId>sdx.sri</groupId>
+            <artifactId>MITyCLibCert</artifactId>
+            <version>1.1.7</version>
+        </dependency>
+
+        <dependency>
+            <groupId>sdx.sri</groupId>
+            <artifactId>MITyCLibCrypt</artifactId>
+            <version>1.1.7</version>
+        </dependency>
+
+        <dependency>
+            <groupId>sdx.sri</groupId>
+            <artifactId>MITyCLibOCSP</artifactId>
+            <version>1.1.7</version>
+        </dependency>
+
+        <dependency>
+            <groupId>sdx.sri</groupId>
+            <artifactId>MITyCLibPolicy</artifactId>
+            <version>1.1.7</version>
+        </dependency>
+
+        <dependency>
+            <groupId>sdx.sri</groupId>
+            <artifactId>MITyCLibTrust</artifactId>
+            <version>1.1.7</version>
+        </dependency>
+
+        <dependency>
+            <groupId>sdx.sri</groupId>
+            <artifactId>MITyCLibTSA</artifactId>
+            <version>1.1.7</version>
+        </dependency>
+        <dependency>
+            <groupId>xmlsec</groupId>
+            <artifactId>xmlsec</artifactId>
+            <version>1.4.2-ADSI-1.1</version>
+        </dependency>
+
+        <dependency>
+            <groupId>xml-apis</groupId>
+            <artifactId>xml-apis</artifactId>
+            <version>1.3.04</version>
+        </dependency>
+        <!-- ================== BOUNCY CASTLE ================== -->
+        <dependency>
+            <groupId>sdx.sri</groupId>
+            <artifactId>bcprov-jdk16</artifactId>
+            <version>1.45</version>
+        </dependency>
+
+        <dependency>
+            <groupId>sdx.sri</groupId>
+            <artifactId>bcmail-jdk16</artifactId>
+            <version>1.45</version>
+        </dependency>
+
+        <dependency>
+            <groupId>sdx.sri</groupId>
+            <artifactId>bctsp-jdk16</artifactId>
+            <version>1.45</version>
+        </dependency>
+
+        <dependency>
+            <groupId>commons-codec</groupId>
+            <artifactId>commons-codec</artifactId>
+            <version>1.2</version>
+        </dependency>
+
+        <dependency>
+            <groupId>commons-httpclient</groupId>
+            <artifactId>commons-httpclient</artifactId>
+            <version>3.0.1</version>
+        </dependency>
+
+        <dependency>
+            <groupId>commons-lang</groupId>
+            <artifactId>commons-lang</artifactId>
+            <version>2.4</version>
+        </dependency>
+
+
+
+
+          <dependency>
+          <groupId>org.springframework.boot</groupId>
+          <artifactId>spring-boot-starter-security</artifactId>
+          <exclusions>
+
+
+
+          </exclusions>
+      </dependency>
+
+      <!-- Informix JDBC Driver -->
+        <dependency>
+            <groupId>com.ibm.informix</groupId>
+            <artifactId>jdbc</artifactId>
+            <version>4.50.9</version>
+        </dependency>
+
+        <!-- HikariCP -->
+        <dependency>
+            <groupId>com.zaxxer</groupId>
+            <artifactId>HikariCP</artifactId>
+            <version>5.1.0</version>
+        </dependency>
+
+        <!-- ZXing (QR Code) -->
+        <dependency>
+            <groupId>com.google.zxing</groupId>
+            <artifactId>core</artifactId>
+            <version>3.5.3</version>
+        </dependency>
+
+        <!-- Spring Boot Starter Test -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <finalName>apiVirtualEmpresa</finalName>
+        <plugins>
+            <!-- Maven Compiler Plugin -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <annotationProcessorPaths>
+                        <path>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                            <version>1.18.34</version>
+                        </path>
+                    </annotationProcessorPaths>
+                </configuration>
+            </plugin>
+
+            <!-- Spring Boot Maven Plugin -->
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <configuration>
+                    <excludes>
+                        <exclude>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                        </exclude>
+                    </excludes>
+                </configuration>
+            </plugin>
+
+            <!-- Maven WAR Plugin - Excluir JARs conflictivos para evitar conflictos con WildFly -->
+
+        </plugins>
+    </build>
+</project>
