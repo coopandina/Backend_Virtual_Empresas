@@ -1003,15 +1003,15 @@ public class NominasService {
                 response.put("AllData", List.of(err));
                 return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
             }
+            // [kguanoluisa] - Se cambia ctadp_cod_depos para permitir tipos IN (1,2,9) - 08/05/2026
             String sqlofici = """
                                 SELECT ctadp_cod_ofici FROM cnxctadp
-                                WHERE ctadp_cod_ctadp = :ctaOrigen AND ctadp_cod_ectad = :estcuenta AND ctadp_cod_depos = :tdepos
+                                WHERE ctadp_cod_ctadp = :ctaOrigen AND ctadp_cod_ectad = :estcuenta AND ctadp_cod_depos IN (1,9)
                             """;
 
             Query queryofi = entityManager.createNativeQuery(sqlofici);
             queryofi.setParameter("ctaOrigen", ctaOrigen);
             queryofi.setParameter("estcuenta", 1);
-            queryofi.setParameter("tdepos", 1);
 
             List<?> resultsofi = queryofi.getResultList();
 
