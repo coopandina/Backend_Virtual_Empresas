@@ -305,7 +305,17 @@ public class AuthService {
 
                     PassSecure passSecure = new PassSecure();
                     clienWwwPswrd = clienWwwPswrd.replace("\"", "");
-                    String passDec = passSecure.decryptPassword(clienWwwPswrd);
+                    String passDec = null;
+                    try {
+                        // [kguanoluisa] - Capturar errores de codificación/desencriptación de contraseña (evitar caídas por passwords corruptos) - 12/05/2026
+                        passDec = passSecure.decryptPassword(clienWwwPswrd);
+                    } catch (Exception ex) {
+                        response.put("success", false);
+                        response.put("message", "Error en la codificación o desencriptación de la contraseña almacenada.");
+                        response.put("status", "AAERRCODIF");
+                        //response.put("errors", "Fallo de descifrado interno: " + ex.getMessage());
+                        return response;
+                    }
 
                     if (passDec != null) {
                         passDec = passDec.trim().replace("\"", ""); // elimina comillas dobles
