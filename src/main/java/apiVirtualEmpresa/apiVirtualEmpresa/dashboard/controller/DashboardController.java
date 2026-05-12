@@ -53,6 +53,10 @@ public class DashboardController {
         return dashboardService.ultimosMovimientosFecha(request, dashboardUtils, authentication);
     }
 
-
+    // [kguanoluisa] - Endpoint para registrar aceptación de ley de protección de datos - 12/05/2026
+    @PostMapping("/aceptarPolitica")
+    public ResponseEntity<Map<String, Object>> aceptarPoliticaDatos(HttpServletRequest request, Authentication authentication) {
+        return dashboardService.aceptarPoliticaDatos(request, authentication);
+    }
 
 }
