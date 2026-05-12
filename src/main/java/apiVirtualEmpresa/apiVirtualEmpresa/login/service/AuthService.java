@@ -354,7 +354,7 @@ public class AuthService {
                                         "WHERE ctrlvirlogin_ide_virtual = :ide " +
                                         "AND ctrlvirlogin_user_virtual = :user " +
                                         "AND ctrlvirlogin_ctrl_virtual = 1 " +
-                                        "AND ctrlvirlogin_fecha_virtual > CURRENT - INTERVAL(1) MINUTE TO MINUTE";
+                                        "AND ctrlvirlogin_fecha_virtual > CURRENT - INTERVAL(15) MINUTE TO MINUTE";
                                 Query qCheck = entityManager.createNativeQuery(sqlCheckSesion);
                                 qCheck.setParameter("ide", rudIdenClie);
                                 qCheck.setParameter("user", ideClieUsu);
