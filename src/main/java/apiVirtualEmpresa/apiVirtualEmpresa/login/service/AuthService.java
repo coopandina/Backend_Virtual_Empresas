@@ -103,8 +103,22 @@ public class AuthService {
                     allData.put("message", "Acceso concedido.");
                     allData.put("status", "AA3684");
 
-                    // 1) Token generado en valida_LoginBDD
-                    String token = jwtUtil.generateToken(request.getUsvcoIdeUsv(),request.getClienIdeClien(),cod_cliente);
+                    // [kguanoluisa] - Generar SessionId único e insertar registro en pendiente (0) - 12/05/2026
+                    String sessionId = java.util.UUID.randomUUID().toString();
+
+                    String sqlRegSession = "INSERT INTO andctrlvirlogin (ctrlvirlogin_ide_virtual, ctrlvirlogin_user_virtual, " +
+                            "ctrlvirlogin_mac_virtual, ctrlvirlogin_cod_temporal, ctrlvirlogin_ip_login, " +
+                            "ctrlvirlogin_fecha_virtual, ctrlvirlogin_ctrl_virtual) " +
+                            "VALUES (:ide, :user, ' ', :uuid, :ip, CURRENT, 0)";
+                    Query querySession = entityManager.createNativeQuery(sqlRegSession);
+                    querySession.setParameter("ide", request.getClienIdeClien());
+                    querySession.setParameter("user", request.getUsvcoIdeUsv());
+                    querySession.setParameter("uuid", sessionId);
+                    querySession.setParameter("ip", accesoDipTermi);
+                    querySession.executeUpdate();
+
+                    // 1) Token generado incluyendo el sessionId
+                    String token = jwtUtil.generateToken(request.getUsvcoIdeUsv(),request.getClienIdeClien(),cod_cliente, sessionId);
 
                     // 2) Crear Cookie HttpOnly (modo local)
                     Cookie cookie = new Cookie("jwt", token);
@@ -161,25 +175,42 @@ public class AuthService {
         }
     }
 
-    public ResponseEntity<Map<String,Object>> logout() {
+    // [kguanoluisa] - Cierre lógico de sesión en base de datos y expiración de cookies - 12/05/2026
+    @Transactional
+    public ResponseEntity<Map<String,Object>> logout(HttpServletRequest request, HttpServletResponse responseServe) {
         Map<String, Object> allData = new HashMap<>();
         Map<String, Object> response = new HashMap<>();
         List<Map<String, Object>> allDataList = new ArrayList<>();
 
-        ResponseCookie killAccess = ResponseCookie.from("access_token","")
-                .httpOnly(true).secure(false).sameSite("Lax").path("/").maxAge(0).build();
-        ResponseCookie killRefresh = ResponseCookie.from("refresh_token","")
-                .httpOnly(true).secure(false).sameSite("Lax").path("/auth").maxAge(0).build();
+        try {
+            String token = Obtenertoken.desdeCookie(request);
+            if (token != null) {
+                String sessionId = jwtUtil.getSessionIdFromToken(token);
+                if (sessionId != null) {
+                    String sqlLogout = "UPDATE andctrlvirlogin SET ctrlvirlogin_ctrl_virtual = 0 WHERE ctrlvirlogin_cod_temporal = :uuid";
+                    Query qLog = entityManager.createNativeQuery(sqlLogout);
+                    qLog.setParameter("uuid", sessionId);
+                    qLog.executeUpdate();
+                }
+            }
+        } catch (Exception e) {
+            // Manejar silenciosamente para no romper el logout visual
+        }
 
-        allData.put("message", "Sesión cerrada");
+        Cookie cookie = new Cookie("jwt", null);
+        cookie.setHttpOnly(true);
+        cookie.setSecure(false);
+        cookie.setPath("/");
+        cookie.setMaxAge(0);
+        responseServe.addCookie(cookie);
+
+        allData.put("message", "Sesión cerrada con éxito.");
         allData.put("status", "LO00");
         allDataList.add(allData);
         response.put("AllData", allDataList);
+        response.put("success", true);
 
-        return ResponseEntity.ok()
-                .header("Set-Cookie", killAccess.toString())
-                .header("Set-Cookie", killRefresh.toString())
-                .body(response);
+        return new ResponseEntity<>(response, HttpStatus.OK);
     }
 
 
@@ -318,6 +349,25 @@ public class AuthService {
                                 return response;
                             }
                             else{
+                                // [kguanoluisa] - Bloquear si ya existe una sesión activa hace menos de 15 min - 12/05/2026
+                                String sqlCheckSesion = "SELECT COUNT(*) FROM andctrlvirlogin " +
+                                        "WHERE ctrlvirlogin_ide_virtual = :ide " +
+                                        "AND ctrlvirlogin_user_virtual = :user " +
+                                        "AND ctrlvirlogin_ctrl_virtual = 1 " +
+                                        "AND ctrlvirlogin_fecha_virtual > CURRENT - INTERVAL(1) MINUTE TO MINUTE";
+                                Query qCheck = entityManager.createNativeQuery(sqlCheckSesion);
+                                qCheck.setParameter("ide", rudIdenClie);
+                                qCheck.setParameter("user", ideClieUsu);
+                                Number active = (Number) qCheck.getSingleResult();
+
+                                if (active.intValue() > 0) {
+                                    response.put("success", false);
+                                    response.put("message", "Ya cuenta con una sesión activa en otra ventana o dispositivo.");
+                                    response.put("status", "AASESIONACTIVA");
+                                    response.put("errors", "Sesión simultánea denegada.");
+                                    return response;
+                                }
+
                                 String sqlDatosCorreo = "select clien_ape_clien,clien_nom_clien ,usvco_ema_usvco, " +
                                         "usvco_tlf_usvco, usvco_ide_usvco,clien_cod_clien  from cnxclien, andusvco where clien_ide_clien=:rudIdenClie " +
                                         "and usvco_ide_usvco=:ideClieUsu ";
@@ -601,6 +651,29 @@ public class AuthService {
                         sms.sendVirtualAccessSMS(clienNumero, "1150", "VIRTUALCOP",FechaIngresoLogin);
                         sendEmail enviarCorreo = new sendEmail();
                         enviarCorreo.sendEmailInicioSesion(clienApellidos, clienNombres, FechaIngresoLogin, ipIngresoLogin, clienEmail);
+
+                        // [kguanoluisa] - Activación definitiva de la sesión y purga de previas - 12/05/2026
+                        try {
+                            String tokenSession = Obtenertoken.desdeCookie(request);
+                            String sessionId = jwtUtil.getSessionIdFromToken(tokenSession);
+                            if (sessionId != null) {
+                                String sqlInvalida = "UPDATE andctrlvirlogin SET ctrlvirlogin_ctrl_virtual = 0 " +
+                                        "WHERE ctrlvirlogin_ide_virtual = :ide AND ctrlvirlogin_user_virtual = :user AND ctrlvirlogin_cod_temporal != :uuid";
+                                Query qInv = entityManager.createNativeQuery(sqlInvalida);
+                                qInv.setParameter("ide", rucIdenClie);
+                                qInv.setParameter("user", cliacUsuVirtu);
+                                qInv.setParameter("uuid", sessionId);
+                                qInv.executeUpdate();
+
+                                String sqlActiva = "UPDATE andctrlvirlogin SET ctrlvirlogin_ctrl_virtual = 1, ctrlvirlogin_fecha_virtual = CURRENT " +
+                                        "WHERE ctrlvirlogin_cod_temporal = :uuid";
+                                Query qAct = entityManager.createNativeQuery(sqlActiva);
+                                qAct.setParameter("uuid", sessionId);
+                                qAct.executeUpdate();
+                            }
+                        } catch (Exception ex) {
+                            // Dejar continuar para no bloquear el login si hay fallo en tabla de auditoría
+                        }
 
                         allData.put("status", "AUTHO");
                         allData.put("des_tip_usvco", des_tip);

@@ -6,6 +6,7 @@ import apiVirtualEmpresa.apiVirtualEmpresa.login.dto.UserCredentials;
 import apiVirtualEmpresa.apiVirtualEmpresa.login.dto.UserResponse;
 import apiVirtualEmpresa.apiVirtualEmpresa.login.service.AuthService;
 import jakarta.servlet.http.Cookie;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -52,17 +53,9 @@ public class AuthController {
     }*/
 
     @PostMapping("/logout")
-    public ResponseEntity<?> logout(HttpServletResponse response) {
-        // Eliminar cookie
-        Cookie cookie = new Cookie("jwt", null);
-        cookie.setHttpOnly(true);
-        cookie.setSecure(false);
-        cookie.setPath("/");
-        cookie.setMaxAge(0); // Expira inmediatamente
-
-        response.addCookie(cookie);
-
-        return ResponseEntity.ok("Logout exitoso");
+    public ResponseEntity<?> logout(HttpServletRequest request, HttpServletResponse response) {
+        // [kguanoluisa] - Delegar logout lógico al servicio para liberar la sesión - 12/05/2026
+        return authService.logout(request, response);
     }
 
     @GetMapping("/me")
