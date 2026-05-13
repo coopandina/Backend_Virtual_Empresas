@@ -19,7 +19,7 @@ public class GlobalExceptionHandler {
         // Captura excepciones silenciosas de rollback por fallos transaccionales de BD analizados
         if (ex.toString().contains("UnexpectedRollbackException") || 
             (ex.getMessage() != null && ex.getMessage().contains("pkmprdr"))) {
-            response.put("message", "Error fechas de base de datos diferentes");
+            response.put("message", "Error fechas de base de datos diferentes o tabla faltante");
             response.put("status", "ERROR_FECHAS_BD");
         } else {
             response.put("message", "Error interno del servidor");
