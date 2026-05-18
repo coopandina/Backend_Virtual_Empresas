@@ -31,19 +31,30 @@ public class GlobalExceptionHandler {
                     response.put("message", "La tabla especificada no existe en la base de datos.");
                 }
                 response.put("status", "ERROR_TABLA_INEXISTENTE");
-            } else if (sqlError.contains("andctrlvirlogin")) {
-                response.put("message", "La tabla especificada (andctrlvirlogin) no existe en la base de datos.");
-                response.put("status", "ERROR_TABLA_INEXISTENTE");
+            } else if (sqlError.contains("not found in any table") || sqlError.contains("Column (")) {
+                int start = sqlError.indexOf("(");
+                int end = sqlError.indexOf(")");
+                if (start != -1 && end != -1 && end > start) {
+                    String columnName = sqlError.substring(start + 1, end);
+                    response.put("message", "La columna especificada (" + columnName + ") no existe en la tabla de la base de datos.");
+                } else {
+                    response.put("message", "La columna especificada no existe en la tabla de la base de datos.");
+                }
+                response.put("status", "ERROR_COLUMNA_INEXISTENTE");
             } else {
                 response.put("message", "Error de base de datos: " + sqlError);
                 response.put("status", "ERROR_BASE_DATOS");
             }
         } 
-        // 2. Captura excepciones silenciosas de rollback genéricas
-        else if (ex.toString().contains("UnexpectedRollbackException") || 
-            (ex.getMessage() != null && ex.getMessage().contains("pkmprdr"))) {
-            response.put("message", "Error fechas de base de datos diferentes o tabla faltante");
+        // 2. Captura excepciones silenciosas específicas de fechas (función pkmprdr)
+        else if (ex.getMessage() != null && ex.getMessage().contains("pkmprdr")) {
+            response.put("message", "Error de consistencia o incompatibilidad de fechas en la base de datos.");
             response.put("status", "ERROR_FECHAS_BD");
+        } 
+        // 3. Captura transacciones revertidas inesperadamente de forma genérica
+        else if (ex.toString().contains("UnexpectedRollbackException")) {
+            response.put("message", "La transacción fue revertida inesperadamente en el servidor de base de datos.");
+            response.put("status", "ERROR_TRANSACCION_REVERTIDA");
         } 
         // 3. Otros errores
         else {
@@ -67,6 +78,8 @@ public class GlobalExceptionHandler {
             if (msg != null && (msg.contains("is not in the database") || 
                                 msg.contains("SQL Error:") || 
                                 msg.contains("table (") || 
+                                msg.contains("not found in any table") || 
+                                msg.contains("Column (") || 
                                 msg.contains("andctrlvirlogin"))) {
                 return msg;
             }
