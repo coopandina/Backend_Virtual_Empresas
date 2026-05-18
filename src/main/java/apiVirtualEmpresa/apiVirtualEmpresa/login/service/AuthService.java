@@ -519,11 +519,8 @@ public class AuthService {
             return response;
 
         } catch (Exception e) {
-            response.put("success", false);
-            response.put("message", "Error interno en el servidor.");
-            response.put("status", "AA99");
-            response.put("errors", e.getMessage());
-            return response;
+            // [kguanoluisa] - Propagar la excepción original para evitar enmascaramiento por UnexpectedRollbackException y capturarla en GlobalExceptionHandler - 18/05/2026
+            throw new RuntimeException(e);
         }
     }
 
