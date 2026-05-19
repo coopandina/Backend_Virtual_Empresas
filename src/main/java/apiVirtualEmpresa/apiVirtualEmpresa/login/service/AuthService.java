@@ -647,44 +647,9 @@ public class AuthService {
                             return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
                         }
 
-                        String ipIngresoLogin = codSeguridad.getIpterminal();
-
-
-                        Libs fechaHoraService = new Libs(entityManager);
-                        String FechaIngresoLogin = fechaHoraService.obtenerFechaYHora();
-
-
-                        SendSMS sms = new SendSMS();
-                        sms.sendVirtualAccessSMS(clienNumero, "1150", "VIRTUALCOP",FechaIngresoLogin);
-                        sendEmail enviarCorreo = new sendEmail();
-                        enviarCorreo.sendEmailInicioSesion(clienApellidos, clienNombres, FechaIngresoLogin, ipIngresoLogin, clienEmail);
-
-                        // [kguanoluisa] - Activación definitiva de la sesión y purga de previas - 12/05/2026
-                        try {
-                            String tokenSession = Obtenertoken.desdeCookie(request);
-                            String sessionId = jwtUtil.getSessionIdFromToken(tokenSession);
-                            if (sessionId != null) {
-                                String sqlInvalida = "UPDATE andctrlvirlogin SET ctrlvirlogin_ctrl_virtual = 0 " +
-                                        "WHERE ctrlvirlogin_ide_virtual = :ide AND ctrlvirlogin_user_virtual = :user AND ctrlvirlogin_cod_temporal != :uuid";
-                                Query qInv = entityManager.createNativeQuery(sqlInvalida);
-                                qInv.setParameter("ide", rucIdenClie);
-                                qInv.setParameter("user", cliacUsuVirtu);
-                                qInv.setParameter("uuid", sessionId);
-                                qInv.executeUpdate();
-
-                                String sqlActiva = "UPDATE andctrlvirlogin SET ctrlvirlogin_ctrl_virtual = 1, ctrlvirlogin_fecha_virtual = CURRENT " +
-                                        "WHERE ctrlvirlogin_cod_temporal = :uuid";
-                                Query qAct = entityManager.createNativeQuery(sqlActiva);
-                                qAct.setParameter("uuid", sessionId);
-                                qAct.executeUpdate();
-                            }
-                        } catch (Exception ex) {
-                            // Dejar continuar para no bloquear el login si hay fallo en tabla de auditoría
-                        }
-
                         allData.put("status", "AUTHO");
                         allData.put("des_tip_usvco", des_tip);
-                        allData.put("message", "Inicio de sesion exitoso!");
+                        allData.put("message", "Código verificado con éxito, pendiente términos y condiciones.");
                         allDataList.add(allData);
                         response.put("AllData", allDataList);
                         return new ResponseEntity<>(response, HttpStatus.OK);
@@ -834,6 +799,129 @@ public class AuthService {
         int numeroAleatorio = 100000 + random.nextInt(900000); // Asegura 6 dígitos
         return String.valueOf(numeroAleatorio);
     }
+    public ResponseEntity<Map<String, Object>> aceptarTerminosCondiciones(HttpServletRequest request, Authentication authentication, Map<String, String> body) {
+        try {
+            Map<String, Object> allData = new HashMap<>();
+            Map<String, Object> response = new HashMap<>();
+            List<Map<String, Object>> allDataList = new ArrayList<>();
+
+            String token = Obtenertoken.desdeCookie(request);
+            if (token == null) {
+                response.put("success", false);
+                allData.put("status", "AA027");
+                allData.put("errors", "No autorizado: no fue posible generar el token de acceso.");
+                response.put("AllData", allDataList);
+                return new ResponseEntity<>(response, HttpStatus.UNAUTHORIZED);
+            }
+
+            if (authentication == null || !authentication.isAuthenticated()) {
+                response.put("success", false);
+                response.put("message", "No autorizado");
+                allData.put("status", "AA028");
+                allData.put("errors", "La sesión no es válida o ha expirado.");
+                response.put("AllData", allDataList);
+                return new ResponseEntity<>(response, HttpStatus.UNAUTHORIZED);
+            }
+
+            String cliacUsuVirtu = authentication.getName();
+            String rucIdenClie = jwtUtil.getrucIdenClie(token);
+            String numSocio    = jwtUtil.getcodcliente(token);
+
+            if (cliacUsuVirtu == null || rucIdenClie == null || numSocio == null) {
+                allData.put("message", "Datos del token incompletos");
+                allData.put("status", "AA022");
+                allData.put("errors", "ERROR EN LA AUTENTICACIÓN");
+                allDataList.add(allData);
+                response.put("AllData", allDataList);
+                return new ResponseEntity<>(response, HttpStatus.UNAUTHORIZED);
+            }
+
+            // Obtener los datos del usuario para el SMS y Email
+            String sqlDatosCorreoIngreso = "SELECT clien_ape_clien, clien_nom_clien, usvco_ema_usvco, usvco_tlf_usvco, clien_ide_clien, clien_cod_clien, usvco_tip_usvco " +
+                    "FROM cnxclien, andusvco WHERE clien_ide_clien = :clienIdenti  " +
+                    "AND usvco_ide_usvco = :cliacUsuVirtu AND clien_ide_clien = usvco_ide_clien";
+            Query resulDatosCorreoIngreso = entityManager.createNativeQuery(sqlDatosCorreoIngreso);
+            resulDatosCorreoIngreso.setParameter("cliacUsuVirtu", cliacUsuVirtu);
+            resulDatosCorreoIngreso.setParameter("clienIdenti", rucIdenClie);
+
+            List<Object[]> results2 = resulDatosCorreoIngreso.getResultList();
+            if (results2.isEmpty()) {
+                allData.put("message", "Usuario no encontrado en la base de datos");
+                allData.put("status", "AA029");
+                allData.put("errors", "ERROR EN LA AUTENTICACIÓN");
+                allDataList.add(allData);
+                response.put("AllData", allDataList);
+                return new ResponseEntity<>(response, HttpStatus.NOT_FOUND);
+            }
+
+            Object[] row2 = results2.get(0);
+            String clienApellidos = row2[0].toString().trim();
+            String clienNombres = row2[1].toString().trim();
+            String clienEmail = row2[2].toString().trim();
+            String clienNumero = row2[3].toString().trim();
+
+            int tip_usvco = Integer.parseInt(row2[6].toString().trim());
+            String des_tip = (tip_usvco == 1) ? "AUTORIZADOR" : "OPERADOR";
+
+            String ipIngresoLogin = (body != null) ? body.get("ipterminal") : null;
+            if (ipIngresoLogin == null) {
+                ipIngresoLogin = request.getRemoteAddr();
+            }
+
+            Libs fechaHoraService = new Libs(entityManager);
+            String FechaIngresoLogin = fechaHoraService.obtenerFechaYHora();
+
+            // Enviar SMS y Correo
+            SendSMS sms = new SendSMS();
+            sms.sendVirtualAccessSMS(clienNumero, "1150", "VIRTUALCOP", FechaIngresoLogin);
+            sendEmail enviarCorreo = new sendEmail();
+            enviarCorreo.sendEmailInicioSesion(clienApellidos, clienNombres, FechaIngresoLogin, ipIngresoLogin, clienEmail);
+
+            // Activación definitiva de la sesión y purga de previas
+            try {
+                String tokenSession = Obtenertoken.desdeCookie(request);
+                String sessionId = jwtUtil.getSessionIdFromToken(tokenSession);
+                if (sessionId != null) {
+                    String sqlInvalida = "UPDATE andctrlvirlogin SET ctrlvirlogin_ctrl_virtual = 0 " +
+                            "WHERE ctrlvirlogin_ide_virtual = :ide AND ctrlvirlogin_user_virtual = :user AND ctrlvirlogin_cod_temporal != :uuid";
+                    Query qInv = entityManager.createNativeQuery(sqlInvalida);
+                    qInv.setParameter("ide", rucIdenClie);
+                    qInv.setParameter("user", cliacUsuVirtu);
+                    qInv.setParameter("uuid", sessionId);
+                    qInv.executeUpdate();
+
+                    String sqlActiva = "UPDATE andctrlvirlogin SET ctrlvirlogin_ctrl_virtual = 1, ctrlvirlogin_fecha_virtual = CURRENT " +
+                            "WHERE ctrlvirlogin_cod_temporal = :uuid";
+                    Query qAct = entityManager.createNativeQuery(sqlActiva);
+                    qAct.setParameter("uuid", sessionId);
+                    qAct.executeUpdate();
+                }
+            } catch (Exception ex) {
+                // Dejar continuar
+            }
+
+            allData.put("status", "AUTHO");
+            allData.put("des_tip_usvco", des_tip);
+            allData.put("message", "Inicio de sesion exitoso!");
+            allDataList.add(allData);
+            response.put("AllData", allDataList);
+            return new ResponseEntity<>(response, HttpStatus.OK);
+
+        } catch (Exception e) {
+            Map<String, Object> errorResponse = new HashMap<>();
+            Map<String, Object> errorData = new HashMap<>();
+            List<Map<String, Object>> errorList = new ArrayList<>();
+
+            errorData.put("message", "Error interno del servidor");
+            errorData.put("status", "ERROR");
+            errorData.put("errors", e.getMessage());
+            errorList.add(errorData);
+            errorResponse.put("AllData", errorList);
+
+            return new ResponseEntity<>(errorResponse, HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
     public static String generarNumberoSerial(int min, int max) {
         Random random = new Random();
         int randomNumber = random.nextInt((max - min) + 1) + min;

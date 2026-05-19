@@ -32,4 +32,12 @@ public class VerifiController {
         return authService.validarCodSeguridad(request, codSeguridad,authentication);
     }
 
+    /**
+     * Endpoint para aceptar términos y condiciones e iniciar sesión definitivamente
+     */
+    @PostMapping(value = "/terminos-condiciones")
+    public ResponseEntity<Map<String, Object>> aceptarTerminos(Authentication authentication, HttpServletRequest request, @RequestBody(required = false) Map<String, String> body) {
+        return authService.aceptarTerminosCondiciones(request, authentication, body);
+    }
+
 }

@@ -55,6 +55,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                     && !path.startsWith("/api/auth/") 
                     && !path.startsWith("/api/firma-sri/")
                     && !path.equals("/api/verificar/codigo_seguridad") 
+                    && !path.equals("/api/verificar/terminos-condiciones")
                     && !path.equals("/api/password/firmar")) {
                 
                 try {
