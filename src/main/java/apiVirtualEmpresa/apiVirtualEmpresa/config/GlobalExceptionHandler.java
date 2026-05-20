@@ -34,6 +34,17 @@ public class GlobalExceptionHandler {
                     response.put("message", "La tabla especificada no existe en la base de datos.");
                 }
                 response.put("status", "ERROR_TABLA_INEXISTENTE");
+            } else if (sqlError.contains("Unique constraint") && sqlError.contains("violated")) {
+                // [kguanoluisa] - Extrae el nombre del procedimiento almacenado del mensaje JDBC de Hibernate.
+                // Formato: "JDBC exception executing SQL [CALL cnxprc_reg_spi01_wb(...)] [Unique constraint (...) violated.]"
+                // - 20/05/2026
+                String procName = extractCallName(sqlError);
+                if (procName != null) {
+                    response.put("message", "Registro duplicado en el procedimiento (" + procName + "): ya existe un registro con esos datos en la base de datos.");
+                } else {
+                    response.put("message", "Registro duplicado: ya existe un registro con esos datos en la base de datos.");
+                }
+                response.put("status", "ERROR_REGISTRO_DUPLICADO");
             } else if (sqlError.contains("not found in any table") || sqlError.contains("Column (")) {
                 int markerIdx = sqlError.contains("Column (") ? sqlError.indexOf("Column (") : 0;
                 int start = sqlError.indexOf("(", markerIdx);
@@ -49,18 +60,18 @@ public class GlobalExceptionHandler {
                 response.put("message", "Error de base de datos: " + sqlError);
                 response.put("status", "ERROR_BASE_DATOS");
             }
-        } 
+        }
         // 2. Captura excepciones silenciosas específicas de fechas (función pkmprdr)
         else if (ex.getMessage() != null && ex.getMessage().contains("pkmprdr")) {
             response.put("message", "Error de consistencia o incompatibilidad de fechas en la base de datos.");
             response.put("status", "ERROR_FECHAS_BD");
-        } 
+        }
         // 3. Captura transacciones revertidas inesperadamente de forma genérica
         else if (ex.toString().contains("UnexpectedRollbackException")) {
             response.put("message", "La transacción fue revertida inesperadamente en el servidor de base de datos.");
             response.put("status", "ERROR_TRANSACCION_REVERTIDA");
-        } 
-        // 3. Otros errores
+        }
+        // 4. Otros errores
         else {
             response.put("message", "Error interno del servidor");
             response.put("status", "ERROR_DESCONOCIDO");
@@ -72,6 +83,19 @@ public class GlobalExceptionHandler {
         return new ResponseEntity<>(response, HttpStatus.INTERNAL_SERVER_ERROR);
     }
 
+    // [kguanoluisa] - Extrae el nombre del procedimiento del mensaje JDBC de Hibernate.
+    // Formato entrada: "JDBC exception executing SQL [CALL nombreProcedimiento(...)] [error...]"
+    // Formato salida: "nombreProcedimiento"
+    // - 20/05/2026
+    private String extractCallName(String msg) {
+        if (msg == null) return null;
+        int callIdx = msg.indexOf("CALL ");
+        if (callIdx == -1) return null;
+        int parenIdx = msg.indexOf("(", callIdx);
+        if (parenIdx == -1) return null;
+        return msg.substring(callIdx + 5, parenIdx).trim();
+    }
+
     private String getRootSqlErrorMessage(Throwable ex) {
         Throwable cause = ex;
         while (cause != null) {
@@ -79,12 +103,13 @@ public class GlobalExceptionHandler {
                 return cause.getMessage();
             }
             String msg = cause.getMessage();
-            if (msg != null && (msg.contains("is not in the database") || 
+            if (msg != null && (msg.contains("is not in the database") ||
                                 msg.contains("The specified table") ||
-                                msg.contains("SQL Error:") || 
-                                msg.contains("table (") || 
-                                msg.contains("not found in any table") || 
-                                msg.contains("Column (") || 
+                                msg.contains("Unique constraint") ||
+                                msg.contains("SQL Error:") ||
+                                msg.contains("table (") ||
+                                msg.contains("not found in any table") ||
+                                msg.contains("Column (") ||
                                 msg.contains("andctrlvirlogin"))) {
                 return msg;
             }
