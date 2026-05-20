@@ -22,8 +22,11 @@ public class GlobalExceptionHandler {
         // 1. Prioridad a errores específicos de base de datos (incluso si están envueltos en Rollback)
         if (sqlError != null) {
             if (sqlError.contains("The specified table") && sqlError.contains("is not in the database")) {
-                int start = sqlError.indexOf("(");
-                int end = sqlError.indexOf(")");
+                // [kguanoluisa] - Buscar el ( desde la posición de "The specified table" para evitar
+                // capturar el ( del CALL SQL que aparece antes en el mensaje de Hibernate - 20/05/2026
+                int markerIdx = sqlError.indexOf("The specified table");
+                int start = sqlError.indexOf("(", markerIdx);
+                int end = sqlError.indexOf(")", start);
                 if (start != -1 && end != -1 && end > start) {
                     String tableName = sqlError.substring(start + 1, end);
                     response.put("message", "La tabla especificada (" + tableName + ") no existe en la base de datos.");
@@ -32,8 +35,9 @@ public class GlobalExceptionHandler {
                 }
                 response.put("status", "ERROR_TABLA_INEXISTENTE");
             } else if (sqlError.contains("not found in any table") || sqlError.contains("Column (")) {
-                int start = sqlError.indexOf("(");
-                int end = sqlError.indexOf(")");
+                int markerIdx = sqlError.contains("Column (") ? sqlError.indexOf("Column (") : 0;
+                int start = sqlError.indexOf("(", markerIdx);
+                int end = sqlError.indexOf(")", start);
                 if (start != -1 && end != -1 && end > start) {
                     String columnName = sqlError.substring(start + 1, end);
                     response.put("message", "La columna especificada (" + columnName + ") no existe en la tabla de la base de datos.");
@@ -76,6 +80,7 @@ public class GlobalExceptionHandler {
             }
             String msg = cause.getMessage();
             if (msg != null && (msg.contains("is not in the database") || 
+                                msg.contains("The specified table") ||
                                 msg.contains("SQL Error:") || 
                                 msg.contains("table (") || 
                                 msg.contains("not found in any table") || 

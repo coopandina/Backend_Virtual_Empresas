@@ -688,12 +688,19 @@ public class TransfInterService {
 
 
         } catch (Exception e) {
-            Map<String, Object> response = new HashMap<>();
-            transactionManager.rollback(status);
-            response.put("message", "Error interno del servidor");
-            response.put("status", "ERROR");
-            response.put("error", e.getMessage());
-            return new ResponseEntity<>(response, HttpStatus.INTERNAL_SERVER_ERROR);
+            // [kguanoluisa] - Se re-lanza la excepción original en lugar de retornar ResponseEntity.
+            // Si retornamos normalmente desde el catch, el interceptor @Transactional de Spring intenta
+            // commitear al salir del método, ve que está marcado rollback-only, y lanza una NUEVA
+            // UnexpectedRollbackException sin cadena de causas, perdiendo el error SQL original.
+            // Al lanzar aquí, Spring ve la excepción y hace rollback limpiamente, y GlobalExceptionHandler
+            // recibe la cadena completa: RuntimeException → PersistenceException → SQLException (tabla inexistente).
+            // - 20/05/2026
+            try {
+                transactionManager.rollback(status);
+            } catch (Exception rollbackEx) {
+                // ignorar - ya se está revirtiendo
+            }
+            throw new RuntimeException(e.getMessage(), e);
         }
     }
 
