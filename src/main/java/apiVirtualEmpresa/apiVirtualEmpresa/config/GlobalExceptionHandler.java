@@ -8,6 +8,32 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import java.util.HashMap;
 import java.util.Map;
 
+/**
+ * Manejador global de excepciones para toda la aplicación.
+ *
+ * Utiliza @ControllerAdvice para interceptar automáticamente cualquier excepción
+ * que no haya sido capturada dentro de un controlador o servicio (es decir, que haya
+ * propagado hacia arriba sin un catch propio). Spring la enruta aquí antes de devolver
+ * la respuesta HTTP al cliente, garantizando un formato de error uniforme en todos los endpoints.
+ *
+ * Flujo de clasificación de errores:
+ *   1. Recorre la cadena de causas de la excepción buscando el mensaje SQL raíz (getRootSqlErrorMessage).
+ *   2. Si encuentra un error SQL, lo clasifica por tipo (classifySqlError):
+ *        - ERROR_TABLA_INEXISTENTE  : tabla no existe en la BD (SQL -206).
+ *        - ERROR_REGISTRO_DUPLICADO : violación de constraint unique (SQL -268).
+ *        - ERROR_COLUMNA_INEXISTENTE: columna no encontrada en ninguna tabla.
+ *        - ERROR_BASE_DATOS         : cualquier otro error SQL no clasificado.
+ *   3. Si no hay error SQL, evalúa casos especiales:
+ *        - ERROR_FECHAS_BD           : incompatibilidad de fechas (función pkmprdr).
+ *        - ERROR_TRANSACCION_REVERTIDA: rollback inesperado de Spring.
+ *        - ERROR_DESCONOCIDO         : cualquier otro error no identificado.
+ *
+ * Todos los errores retornan HTTP 500 con el formato JSON:
+ *   { "success": false, "status": "...", "message": "...", "error": "..." }
+ *
+ * @author kguanoluisa
+ * @since 11/05/2026
+ */
 // [kguanoluisa] - Manejador global para capturar errores inesperados o de base de datos y unificar respuesta - 11/05/2026
 @ControllerAdvice
 public class GlobalExceptionHandler {
