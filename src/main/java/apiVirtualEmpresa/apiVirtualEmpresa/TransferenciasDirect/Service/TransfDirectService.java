@@ -564,11 +564,11 @@ public class TransfDirectService {
             }
 
         } catch (Exception e) {
-            Map<String, Object> response = new HashMap<>();
-            response.put("message", "Error interno del servidor");
-            response.put("status", false);
-            response.put("error", e.getMessage());
-            return new ResponseEntity<>(response, HttpStatus.INTERNAL_SERVER_ERROR);
+            // [kguanoluisa] - Se re-lanza en lugar de retornar ResponseEntity para que el interceptor
+            // @Transactional haga rollback limpio y GlobalExceptionHandler reciba la causa SQL original.
+            // Si se retorna normalmente, Spring intenta commitear, ve rollback-only y lanza una NUEVA
+            // UnexpectedRollbackException sin cadena de causas, perdiendo el error SQL. - 20/05/2026
+            throw new RuntimeException(e.getMessage(), e);
         }
     }
 

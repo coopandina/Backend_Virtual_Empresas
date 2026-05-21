@@ -5,6 +5,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 
+import java.sql.SQLException;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -17,11 +18,12 @@ import java.util.Map;
  * la respuesta HTTP al cliente, garantizando un formato de error uniforme en todos los endpoints.
  *
  * Flujo de clasificación de errores:
- *   1. Recorre la cadena de causas de la excepción buscando el mensaje SQL raíz (getRootSqlErrorMessage).
- *   2. Si encuentra un error SQL, lo clasifica por tipo (classifySqlError):
- *        - ERROR_TABLA_INEXISTENTE  : tabla no existe en la BD (SQL -206).
- *        - ERROR_REGISTRO_DUPLICADO : violación de constraint unique (SQL -268).
- *        - ERROR_COLUMNA_INEXISTENTE: columna no encontrada en ninguna tabla.
+ *   1. Recorre la cadena de causas buscando el error SQL raíz (getRootSqlError).
+ *      Retorna el código numérico Informix y el mensaje del error.
+ *   2. Clasifica por código numérico primero (más confiable), texto como respaldo:
+ *        - ERROR_TABLA_INEXISTENTE  : código -206 / tabla no existe en la BD.
+ *        - ERROR_COLUMNA_INEXISTENTE: código -217 / columna no encontrada.
+ *        - ERROR_REGISTRO_DUPLICADO : código -268 / violación de constraint unique.
  *        - ERROR_BASE_DATOS         : cualquier otro error SQL no clasificado.
  *   3. Si no hay error SQL, evalúa casos especiales:
  *        - ERROR_FECHAS_BD           : incompatibilidad de fechas (función pkmprdr).
@@ -38,13 +40,18 @@ import java.util.Map;
 @ControllerAdvice
 public class GlobalExceptionHandler {
 
+    // Códigos de error SQL de Informix manejados
+    private static final int SQL_ERR_TABLA_INEXISTENTE  = -206;
+    private static final int SQL_ERR_COLUMNA_INEXISTENTE = -217;
+    private static final int SQL_ERR_REGISTRO_DUPLICADO  = -268;
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<Map<String, Object>> handleAllExceptions(Exception ex) {
         Map<String, Object> response = new HashMap<>();
-        String sqlError = getRootSqlErrorMessage(ex);
+        SqlErrorInfo sqlInfo = getRootSqlError(ex);
 
-        if (sqlError != null) {
-            classifySqlError(sqlError, response);
+        if (sqlInfo != null) {
+            classifySqlError(sqlInfo, response);
         } else if (ex.getMessage() != null && ex.getMessage().contains("pkmprdr")) {
             setError(response, "Error de consistencia o incompatibilidad de fechas en la base de datos.", "ERROR_FECHAS_BD");
         } else if (ex.toString().contains("UnexpectedRollbackException")) {
@@ -58,23 +65,30 @@ public class GlobalExceptionHandler {
         return new ResponseEntity<>(response, HttpStatus.INTERNAL_SERVER_ERROR);
     }
 
-    // [kguanoluisa] - Clasifica el tipo de error SQL y construye el mensaje apropiado - 20/05/2026
-    private void classifySqlError(String sqlError, Map<String, Object> response) {
-        if (sqlError.contains("The specified table") && sqlError.contains("is not in the database")) {
+    // [kguanoluisa] - Contenedor interno: código numérico SQL + mensaje - 21/05/2026
+    private static class SqlErrorInfo {
+        final int code;
+        final String message;
+        SqlErrorInfo(int code, String message) {
+            this.code = code;
+            this.message = message;
+        }
+    }
+
+    // [kguanoluisa] - Clasifica por código numérico SQL primero (exacto), luego por texto como respaldo - 21/05/2026
+    private void classifySqlError(SqlErrorInfo sqlInfo, Map<String, Object> response) {
+        String sqlError = sqlInfo.message;
+
+        if (sqlInfo.code == SQL_ERR_TABLA_INEXISTENTE ||
+                (sqlError.contains("The specified table") && sqlError.contains("is not in the database"))) {
             String tableName = extractNameAfterMarker(sqlError, "The specified table");
             String msg = tableName != null
                     ? "La tabla especificada (" + tableName + ") no existe en la base de datos."
                     : "La tabla especificada no existe en la base de datos.";
             setError(response, msg, "ERROR_TABLA_INEXISTENTE");
 
-        } else if (sqlError.contains("Unique constraint") && sqlError.contains("violated")) {
-            String procName = extractCallName(sqlError);
-            String msg = procName != null
-                    ? "Registro duplicado en el procedimiento (" + procName + "): ya existe un registro con esos datos en la base de datos."
-                    : "Registro duplicado: ya existe un registro con esos datos en la base de datos.";
-            setError(response, msg, "ERROR_REGISTRO_DUPLICADO");
-
-        } else if (sqlError.contains("not found in any table") || sqlError.contains("Column (")) {
+        } else if (sqlInfo.code == SQL_ERR_COLUMNA_INEXISTENTE ||
+                (sqlError.contains("not found in any table") || sqlError.contains("Column ("))) {
             String marker = sqlError.contains("Column (") ? "Column (" : null;
             String colName = extractNameAfterMarker(sqlError, marker);
             String msg = colName != null
@@ -82,8 +96,16 @@ public class GlobalExceptionHandler {
                     : "La columna especificada no existe en la tabla de la base de datos.";
             setError(response, msg, "ERROR_COLUMNA_INEXISTENTE");
 
+        } else if (sqlInfo.code == SQL_ERR_REGISTRO_DUPLICADO ||
+                (sqlError.contains("Unique constraint") && sqlError.contains("violated"))) {
+            String procName = extractCallName(sqlError);
+            String msg = procName != null
+                    ? "Registro duplicado en el procedimiento (" + procName + "): ya existe un registro con esos datos en la base de datos."
+                    : "Registro duplicado: ya existe un registro con esos datos en la base de datos.";
+            setError(response, msg, "ERROR_REGISTRO_DUPLICADO");
+
         } else {
-            setError(response, "Error de base de datos: " + sqlError, "ERROR_BASE_DATOS");
+            setError(response, "Error de base de datos (código " + sqlInfo.code + "): " + sqlError, "ERROR_BASE_DATOS");
         }
     }
 
@@ -118,12 +140,14 @@ public class GlobalExceptionHandler {
         return msg.substring(callIdx + 5, parenIdx).trim();
     }
 
-    // [kguanoluisa] - Recorre la cadena de causas de la excepción buscando el mensaje SQL raíz - 18/05/2026
-    private String getRootSqlErrorMessage(Throwable ex) {
+    // [kguanoluisa] - Recorre la cadena de causas buscando el error SQL raíz.
+    // Prioridad: instanceof SQLException (tiene código numérico exacto) → texto del mensaje de Hibernate.
+    // - 21/05/2026
+    private SqlErrorInfo getRootSqlError(Throwable ex) {
         Throwable cause = ex;
         while (cause != null) {
-            if (cause instanceof java.sql.SQLException) {
-                return cause.getMessage();
+            if (cause instanceof SQLException sqlEx) {
+                return new SqlErrorInfo(sqlEx.getErrorCode(), sqlEx.getMessage());
             }
             String msg = cause.getMessage();
             if (msg != null && (msg.contains("is not in the database") ||
@@ -134,10 +158,28 @@ public class GlobalExceptionHandler {
                                 msg.contains("not found in any table") ||
                                 msg.contains("Column (")               ||
                                 msg.contains("andctrlvirlogin"))) {
-                return msg;
+                // No es SQLException directa, extraer código del mensaje si aparece (ej: "SQL Error: -217")
+                int code = extractSqlCode(msg);
+                return new SqlErrorInfo(code, msg);
             }
             cause = cause.getCause();
         }
         return null;
+    }
+
+    // [kguanoluisa] - Intenta extraer el código numérico SQL del mensaje de texto de Hibernate.
+    // Formato: "SQL Error: -217, SQLState: IX000" → retorna -217. Si no encuentra, retorna 0.
+    // - 21/05/2026
+    private int extractSqlCode(String msg) {
+        int idx = msg.indexOf("SQL Error: ");
+        if (idx == -1) return 0;
+        try {
+            int start = idx + 10;
+            int end = msg.indexOf(",", start);
+            String codeStr = (end != -1 ? msg.substring(start, end) : msg.substring(start)).trim();
+            return Integer.parseInt(codeStr);
+        } catch (NumberFormatException e) {
+            return 0;
+        }
     }
 }
