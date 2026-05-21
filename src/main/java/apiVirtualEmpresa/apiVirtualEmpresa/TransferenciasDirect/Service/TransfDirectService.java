@@ -1,11 +1,11 @@
 package apiVirtualEmpresa.apiVirtualEmpresa.TransferenciasDirect.Service;
-import apiVirtualEmpresa.apiVirtualEmpresa.login.service.TokenExpirationService;
+
 import apiVirtualEmpresa.apiVirtualEmpresa.TransferenciasDirect.dto.TransfDirectUtils;
 import apiVirtualEmpresa.apiVirtualEmpresa.config.JwtUtil;
 import apiVirtualEmpresa.apiVirtualEmpresa.config.Obtenertoken;
-import sms.SendSMS;
-import envioCorreo.sendEmail;
+import apiVirtualEmpresa.apiVirtualEmpresa.login.service.TokenExpirationService;
 import apiVirtualEmpresas.virtualempresas.libs.Libs;
+import envioCorreo.sendEmail;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import jakarta.persistence.Query;
@@ -17,8 +17,11 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import sms.SendSMS;
+
 import java.math.BigDecimal;
 import java.util.*;
+
 @Service
 
 @Transactional
@@ -29,6 +32,7 @@ public class TransfDirectService {
     private EntityManager entityManager;
 
     private final JwtUtil jwtUtil;
+
     public TransfDirectService(JwtUtil jwtUtil) {
         this.jwtUtil = jwtUtil;
     }
@@ -159,7 +163,7 @@ public class TransfDirectService {
                     Query resultBloqUser = entityManager.createNativeQuery(sqlBloqUser);
                     resultBloqUser.setParameter("bloqueo", "0");
                     resultBloqUser.setParameter("rudIdenClie", clienIdenti);
-                    resultBloqUser.setParameter("ideClieUsu",cliacUsuRuc);
+                    resultBloqUser.setParameter("ideClieUsu", cliacUsuRuc);
 
                     try {
                         int rowsUpdated = resultBloqUser.executeUpdate();
@@ -244,7 +248,7 @@ public class TransfDirectService {
                         "WHERE ctadp_cod_ctadp = :ctadp_cod_ctadp " +
                         "AND ctadp_cod_depos IN (1,2,9) " +
                         "AND ctadp_cod_ectad = :ctadp_cod_ectad " +
-                        "AND ctadp_cod_clien = clien_cod_clien " ;
+                        "AND ctadp_cod_clien = clien_cod_clien ";
 
                 // Consulta cuenta origen
                 Query query = entityManager.createNativeQuery(sqlQuery);
@@ -293,7 +297,7 @@ public class TransfDirectService {
                 if (!resultsDatosCoreeo1.isEmpty()) {
                     Object[] rowEnvio = resultsDatosCoreeo1.get(0);
                     emailOperador = rowEnvio[0].toString().trim();
-                    nombresCliente  = rowEnvio[1].toString().trim();
+                    nombresCliente = rowEnvio[1].toString().trim();
                     tlfOperador = rowEnvio[2].toString().trim();
                 }
 
@@ -311,7 +315,7 @@ public class TransfDirectService {
                 if (!resultsDatosCorreAut.isEmpty()) {
                     Object[] rowEnvioAut = resultsDatosCorreAut.get(0);
                     emailAut = rowEnvioAut[0].toString().trim();
-                    tlfAutr  = rowEnvioAut[1].toString().trim();
+                    tlfAutr = rowEnvioAut[1].toString().trim();
                 }
 
                 if (clienCodOficiEnvio != null
@@ -334,9 +338,9 @@ public class TransfDirectService {
                     String sqlInfoEnvio = "SELECT ofici_nom_ofici,clien_dir_email,clien_ape_clien,clien_nom_clien, clien_tlf_celul,clien_cod_clien " +
                             "FROM cnxctadp, cnxclien, cnxofici " +
                             "WHERE ctadp_cod_ctadp = :ctadp_cod_ctadp " +
-                            "AND ctadp_cod_depos IN (1,2,9) "+
+                            "AND ctadp_cod_depos IN (1,2,9) " +
                             "AND ctadp_cod_ectad= 1 " +
-                            "AND clien_cod_ofici = ofici_cod_ofici "+
+                            "AND clien_cod_ofici = ofici_cod_ofici " +
                             "AND ctadp_cod_clien=clien_cod_clien";
                     Query queryParamsEnvio = entityManager.createNativeQuery(sqlInfoEnvio);
                     queryParamsEnvio.setParameter("ctadp_cod_ctadp", ctadpCodCtadpEnvio);
@@ -344,9 +348,9 @@ public class TransfDirectService {
                     String sqlInfoRecibe = "SELECT ofici_nom_ofici,clien_dir_email,clien_ape_clien,clien_nom_clien, clien_tlf_celul,clien_cod_clien " +
                             "FROM cnxctadp, cnxclien, cnxofici " +
                             "WHERE ctadp_cod_ctadp = :ctadp_cod_ctadp " +
-                            "AND ctadp_cod_depos IN (1,2,9) "+
+                            "AND ctadp_cod_depos IN (1,2,9) " +
                             "AND ctadp_cod_ectad= 1" +
-                            "AND clien_cod_ofici = ofici_cod_ofici "+
+                            "AND clien_cod_ofici = ofici_cod_ofici " +
                             "AND ctadp_cod_clien=clien_cod_clien";
                     Query queryParamsRecibe = entityManager.createNativeQuery(sqlInfoRecibe);
                     queryParamsRecibe.setParameter("ctadp_cod_ctadp", ctadpCodCtadpDestino);
@@ -385,14 +389,14 @@ public class TransfDirectService {
                     String FechaHora = fechaHoraService.obtenerFechaYHora();
 
 
-                    String numTransfer = String.valueOf(" 00000"+ returnValue);
+                    String numTransfer = String.valueOf(" 00000" + returnValue);
                     String valTransf = String.valueOf(" USD. " + valTransferencia);
                     String ipterminal = dto.getIpterminal();
 
                     PassSecure passSecure = new PassSecure();
-                    String infoConcatena = numSocio +FechaHora;
-                    String encrip2 =  passSecure.encryptPassword(infoConcatena);
-                    String encrip1 = encrip2.substring(0,10);
+                    String infoConcatena = numSocio + FechaHora;
+                    String encrip2 = passSecure.encryptPassword(infoConcatena);
+                    String encrip1 = encrip2.substring(0, 10);
 
                     String sqlInsertTravir =
                             "INSERT INTO andtravir (travir_cod_socio, travir_cta_desti, travir_val_trans, travir_fec_trans, travir_num_ttran, travir_cod_encri1, travir_cod_encri2) " +
@@ -454,9 +458,9 @@ public class TransfDirectService {
                     String sqlInfoEnvio = "SELECT ofici_nom_ofici,clien_dir_email,clien_ape_clien,clien_nom_clien, clien_tlf_celul,clien_cod_clien " +
                             "FROM cnxctadp, cnxclien, cnxofici " +
                             "WHERE ctadp_cod_ctadp = :ctadp_cod_ctadp " +
-                            "AND ctadp_cod_depos IN (1,2,9) "+
+                            "AND ctadp_cod_depos IN (1,2,9) " +
                             "AND ctadp_cod_ectad= 1 " +
-                            "AND clien_cod_ofici = ofici_cod_ofici "+
+                            "AND clien_cod_ofici = ofici_cod_ofici " +
                             "AND ctadp_cod_clien=clien_cod_clien";
                     Query queryParamsEnvio = entityManager.createNativeQuery(sqlInfoEnvio);
                     queryParamsEnvio.setParameter("ctadp_cod_ctadp", ctadpCodCtadpEnvio);
@@ -464,9 +468,9 @@ public class TransfDirectService {
                     String sqlInfoRecibe = "SELECT ofici_nom_ofici,clien_dir_email,clien_ape_clien,clien_nom_clien, clien_tlf_celul,clien_cod_clien " +
                             "FROM cnxctadp, cnxclien, cnxofici " +
                             "WHERE ctadp_cod_ctadp = :ctadp_cod_ctadp " +
-                            "AND ctadp_cod_depos IN (1,2,9) "+
+                            "AND ctadp_cod_depos IN (1,2,9) " +
                             "AND ctadp_cod_ectad= 1" +
-                            "AND clien_cod_ofici = ofici_cod_ofici "+
+                            "AND clien_cod_ofici = ofici_cod_ofici " +
                             "AND ctadp_cod_clien=clien_cod_clien";
                     Query queryParamsRecibe = entityManager.createNativeQuery(sqlInfoRecibe);
                     queryParamsRecibe.setParameter("ctadp_cod_ctadp", ctadpCodCtadpDestino);
@@ -505,10 +509,10 @@ public class TransfDirectService {
 
                     String numTransfer = String.valueOf(returnValue);
                     String valTransf = String.valueOf(valTransferencia);
-                     PassSecure passSecure = new PassSecure();
-                    String infoConcatena = numSocio +FechaHora;
-                    String encrip2 =  passSecure.encryptPassword(infoConcatena);
-                    String encrip1 = encrip2.substring(0,10);
+                    PassSecure passSecure = new PassSecure();
+                    String infoConcatena = numSocio + FechaHora;
+                    String encrip2 = passSecure.encryptPassword(infoConcatena);
+                    String encrip1 = encrip2.substring(0, 10);
                     String sqlInsertTravir =
                             "INSERT INTO andtravir (travir_cod_socio, travir_cta_desti, travir_val_trans, travir_fec_trans, travir_num_ttran, travir_cod_encri1, travir_cod_encri2) " +
                                     "VALUES (:travir_cod_socio, :travir_cta_desti, :travir_val_trans, CURRENT, :travir_num_ttran, :travir_cod_encri1, :travir_cod_encri2)";
@@ -547,7 +551,7 @@ public class TransfDirectService {
                     }
 
                     intentosRealizadoTokenFallos = 0;
-                    response.put("message", "TRANSFERENCIA REALIZADA CON ÉXITO :)" );
+                    response.put("message", "TRANSFERENCIA REALIZADA CON ÉXITO :)");
                     response.put("numTransferencia", returnValue);
                     response.put("status", "DTROK0005");
                     response.put("success", true);
@@ -556,7 +560,7 @@ public class TransfDirectService {
 
                 return new ResponseEntity<>(response, HttpStatus.OK);
 
-            }else{
+            } else {
                 response.put("message", "MONTO INSUFICIENTE PARA REALIZAR LA TRANSFERENCIA ");
                 response.put("success", false);
                 response.put("error", "ERROR005");
@@ -635,7 +639,7 @@ public class TransfDirectService {
             query.setParameter("ctadp_cod_ctadp", numeroCuentaEnvio);
             query.setParameter("ctadp_cod_ectad", "1");
             query.setParameter("clien_cod_clien", numSocio);
-            query.setParameter("clien_ide_clien",clienIdenti);
+            query.setParameter("clien_ide_clien", clienIdenti);
             List<Object[]> results = query.getResultList();
 
             String sqlQueryVerDestino = """
@@ -672,7 +676,7 @@ public class TransfDirectService {
             //generar codigo
             String CodigoTrfDirectas = codigoAleatorio6Temp();
             SendSMS smsDesbloqueo = new SendSMS();
-            smsDesbloqueo.sendSecurityCodeSMS(tlfCtaEnvio,"1150",CodigoTrfDirectas,"efectuar la Transferencia directa", fecha);
+            smsDesbloqueo.sendSecurityCodeSMS(tlfCtaEnvio, "1150", CodigoTrfDirectas, "efectuar la Transferencia directa", fecha);
             // Enviar correo
             sendEmail enviarCorreo = new sendEmail();
             enviarCorreo.sendEmailTokenTemp(apellCtaEnvio, nombreCtaEnvio, fecha, emailCtaEnvio, CodigoTrfDirectas);
@@ -729,6 +733,7 @@ public class TransfDirectService {
             throw new Exception("Error al obtener el saldo disponible: " + e.getMessage(), e);
         }
     }
+
     public String codigoAleatorio6Temp() {
         // Genera un número aleatorio de 6 dígitos
         Random random = new Random();
