@@ -143,7 +143,6 @@ public class DashboardService {
             return new ResponseEntity<>(response, HttpStatus.OK);
 
         } catch (Exception e) {
-
             Map<String, Object> err = new HashMap<>();
             err.put("message", "Error interno del servidor.");
             err.put("status", "ERROR001");
@@ -316,7 +315,6 @@ public class DashboardService {
             return new ResponseEntity<>(response, HttpStatus.OK);
 
         } catch (Exception e) {
-
             Map<String, Object> err = new HashMap<>();
             err.put("message", "Error interno del servidor.");
             err.put("status", "ERROR001");
@@ -584,7 +582,6 @@ public class DashboardService {
             return new ResponseEntity<>(response, HttpStatus.OK);
 
         } catch (Exception e) {
-
             Map<String, Object> error = new LinkedHashMap<>();
             error.put("status", "ERROR003");
             error.put("message", "Error interno del servidor.");
@@ -657,7 +654,6 @@ public class DashboardService {
             return new ResponseEntity<>(response, HttpStatus.OK);
 
         } catch (Exception e) {
-
             Map<String, Object> error = new HashMap<>();
             error.put("message", "Error interno del servidor");
             error.put("status", "ERROR001");
@@ -730,7 +726,6 @@ public class DashboardService {
             return new ResponseEntity<>(response, HttpStatus.OK);
 
         } catch (Exception e) {
-
             Map<String, Object> error = new HashMap<>();
             error.put("message", "Error interno del servidor");
             error.put("status", "ERROR001");
@@ -851,13 +846,8 @@ public class DashboardService {
             }
 
         } catch (Exception e) {
-            Map<String, Object> err = new HashMap<>();
-            err.put("status", "ERROR_SYSTEM");
-            err.put("errors", "Error al registrar la aceptación: " + e.getMessage());
-            allDataList.add(err);
-            response.put("success", false);
-            response.put("AllData", allDataList);
-            return new ResponseEntity<>(response, HttpStatus.INTERNAL_SERVER_ERROR);
+            //kguanoluisa, [Se relanza excepcion para que @Transactional haga rollback del INSERT en andaudlpdf][][2026-05-21]
+            throw new RuntimeException("Error al registrar la aceptación: " + e.getMessage(), e);
         }
     }
 }
