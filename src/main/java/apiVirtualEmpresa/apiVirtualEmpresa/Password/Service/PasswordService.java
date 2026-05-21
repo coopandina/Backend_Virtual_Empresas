@@ -1,16 +1,15 @@
 package apiVirtualEmpresa.apiVirtualEmpresa.Password.Service;
-import apiVirtualEmpresa.apiVirtualEmpresa.Password.dto.PasswordUtils;
-import apiVirtualEmpresa.apiVirtualEmpresa.config.Obtenertoken;
-//import apiVirtualEmpresa.apiVirtualEmpresa.libs.Libs;
-import sms.SendSMS;
-import envioCorreo.sendEmail;
 
+import apiVirtualEmpresa.apiVirtualEmpresa.Password.dto.PasswordUtils;
+import apiVirtualEmpresa.apiVirtualEmpresa.config.JwtUtil;
+import apiVirtualEmpresa.apiVirtualEmpresa.config.Obtenertoken;
 import apiVirtualEmpresa.apiVirtualEmpresa.login.service.TokenExpirationService;
 import envioCorreo.sendEmail;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
 import jakarta.servlet.http.HttpServletRequest;
 import libs.PassSecure;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -18,10 +17,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.RequestBody;
 import sms.SendSMS;
-import apiVirtualEmpresa.apiVirtualEmpresa.config.JwtUtil;
-import org.springframework.beans.factory.annotation.Autowired;
 
 import java.util.*;
+
+//import apiVirtualEmpresa.apiVirtualEmpresa.libs.Libs;
 
 @Transactional
 @Service
@@ -64,13 +63,13 @@ public class PasswordService {
                 return new ResponseEntity<>(response, HttpStatus.UNAUTHORIZED);
             }
 
-            String cliacUsuRuc  = authentication.getName();
-            String clienIdenti  = jwtUtil.getrucIdenClie(token);
-            String numSocio     = jwtUtil.getcodcliente(token);
+            String cliacUsuRuc = authentication.getName();
+            String clienIdenti = jwtUtil.getrucIdenClie(token);
+            String numSocio = jwtUtil.getcodcliente(token);
 
             String passwordConf = dto.getPasswordConf();
             String passwordNuev = dto.getPasswordNuev();
-            String passwordAct  = dto.getPasswordAct();
+            String passwordAct = dto.getPasswordAct();
             String codTemp = dto.getCodTemp();
 
             if (cliacUsuRuc == null || clienIdenti == null || numSocio == null) {
@@ -87,7 +86,7 @@ public class PasswordService {
 
             if (passwordConf == null || !passwordConf.matches("\\d{4}") ||
                     passwordNuev == null || !passwordNuev.matches("\\d{4}") ||
-                    passwordAct  == null || !passwordAct.matches("\\d{4}")) {
+                    passwordAct == null || !passwordAct.matches("\\d{4}")) {
 
                 Map<String, Object> err = new HashMap<>();
                 err.put("status", "ERROR763309");
@@ -207,15 +206,15 @@ public class PasswordService {
                     return new ResponseEntity<>(response, HttpStatus.OK);
                 }
 
-                    Map<String, Object> warn = new HashMap<>();
+                Map<String, Object> warn = new HashMap<>();
 
 
                 warn.put("status", "AA029");
-                warn.put("message", "Código temporal incorrecto. Intentos restantes: "+ (3 - intentosRealizadoTokenFallos));
+                warn.put("message", "Código temporal incorrecto. Intentos restantes: " + (3 - intentosRealizadoTokenFallos));
                 allDataList.add(warn);
                 response.put("success", false);
-                    response.put("AllData", allDataList);
-                    return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+                response.put("AllData", allDataList);
+                return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
 
             } else {
                 String sqlUpdatePassword =
@@ -273,10 +272,9 @@ public class PasswordService {
 
             String token = Obtenertoken.desdeCookie(request);
 
-            String  rucUsuVirtu  = authentication.getName();
-            String  clienIdenti = jwtUtil.getrucIdenClie(token);
+            String rucUsuVirtu = authentication.getName();
+            String clienIdenti = jwtUtil.getrucIdenClie(token);
             String numSocio = jwtUtil.getcodcliente(token);
-
 
 
             // Validación de datos del token
@@ -290,11 +288,11 @@ public class PasswordService {
 
             String passwordConf = dto.getPasswordConf();
             String passwordNuev = dto.getPasswordNuev();
-            String passwordAct  = dto.getPasswordAct();
+            String passwordAct = dto.getPasswordAct();
 
             if (passwordConf == null || !passwordConf.matches("\\d{4}") ||
                     passwordNuev == null || !passwordNuev.matches("\\d{4}") ||
-                    passwordAct  == null || !passwordAct.matches("\\d{4}")) {
+                    passwordAct == null || !passwordAct.matches("\\d{4}")) {
 
                 Map<String, Object> err = new HashMap<>();
                 err.put("status", "ERROR763309");
@@ -384,7 +382,6 @@ public class PasswordService {
             }
 
 
-
             apiVirtualEmpresas.virtualempresas.libs.Libs fechaHoraService = new apiVirtualEmpresas.virtualempresas.libs.Libs(entityManager);
             String fecha = fechaHoraService.obtenerFechaYHora();
 
@@ -412,20 +409,19 @@ public class PasswordService {
             // Extraer datos de las cuentas
             Object[] resultEnvio = results.get(0);
 
-            String tlfCtaEnvio    = resultEnvio[2].toString().trim();
-            String emailCtaEnvio  = resultEnvio[3].toString().trim();
+            String tlfCtaEnvio = resultEnvio[2].toString().trim();
+            String emailCtaEnvio = resultEnvio[3].toString().trim();
             String nombreCtaEnvio = resultEnvio[4].toString().trim();
-            String apellCtaEnvio  = resultEnvio[5].toString().trim();
+            String apellCtaEnvio = resultEnvio[5].toString().trim();
 
 
             //generar codigo
             String CodigoTrfDirectas = codigoAleatorio6Temp();
             SendSMS smsDesbloqueo = new SendSMS();
-            smsDesbloqueo.sendSecurityCodeSMS(tlfCtaEnvio,"1150",CodigoTrfDirectas,"Actualizar su Clave", fecha);
+            smsDesbloqueo.sendSecurityCodeSMS(tlfCtaEnvio, "1150", CodigoTrfDirectas, "Actualizar su Clave", fecha);
             // Enviar correo
             sendEmail enviarCorreo = new sendEmail();
             enviarCorreo.sendEmailTokenTemp(apellCtaEnvio, nombreCtaEnvio, fecha, emailCtaEnvio, CodigoTrfDirectas);
-
 
 
             String sqlBloqUser = "UPDATE vircodaccess SET codaccess_estado = '0' WHERE codaccess_cedula = :rudIdenClie AND codaccess_usuario = :ideClieUsu AND codaccess_estado = '1' AND codsms_codigo = 13";
@@ -435,7 +431,7 @@ public class PasswordService {
             resultBloqUser.executeUpdate();
 
             // Insertar nuevo código temporal
-            String sqlInsertAccesos ="INSERT INTO vircodaccess "
+            String sqlInsertAccesos = "INSERT INTO vircodaccess "
                     + "(codaccess_cedula, codaccess_usuario, codaccess_codigo_temporal, codsms_codigo, codaccess_estado, codaccess_fecha) "
                     + "VALUES (:codaccess_cedula, :codaccess_usuario, :codaccess_codigo_temporal, :codsms_codigo, :codaccess_estado, :codaccess_fecha)";
 
@@ -448,7 +444,7 @@ public class PasswordService {
             resultInsertAcceso.setParameter("codaccess_fecha", fecha);
             resultInsertAcceso.executeUpdate();
             tokenExpirationService.programarExpiracionToken(clienIdenti, CodigoTrfDirectas, "13");
-            response.put("message", "CODIGO GENERADO CON EXITO " );
+            response.put("message", "CODIGO GENERADO CON EXITO ");
             response.put("status", "CODTRFOK005");
             return new ResponseEntity<>(response, HttpStatus.OK);
 
