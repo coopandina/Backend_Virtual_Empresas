@@ -1072,7 +1072,7 @@ public class NominasService {
 
 
                 String sqlInsertPlina =
-                        "INSERT INTO andplina (" +
+                        "INSERT INTO andplina_fercho_prueba (" +
                                 "plina_cod_empre, plina_cod_ofici, plina_cod_cajas, plina_des_plina, " +
                                 "plina_cod_ctaor, plina_cod_ctade, plina_val_trans, plina_usu_carga, " +
                                 "plina_fec_carga, plina_usu_aprob, plina_fec_aprob, plina_num_plina, " +
@@ -1114,12 +1114,11 @@ public class NominasService {
             return new ResponseEntity<>(response, HttpStatus.OK);
 
         } catch (Exception e) {
-            Map<String, Object> err = new HashMap<>();
-            err.put("status", "ERRORTRFINTER500");
-            err.put("errors", e.getMessage());
-
-            response.put("AllData", Collections.singletonList(err));
-            return new ResponseEntity<>(response, HttpStatus.INTERNAL_SERVER_ERROR);
+            // [kguanoluisa] - Se re-lanza en lugar de retornar ResponseEntity para que el interceptor
+            // @Transactional haga rollback limpio y GlobalExceptionHandler reciba la causa SQL original.
+            // Si se retorna normalmente, Spring intenta commitear, ve rollback-only y lanza una NUEVA
+            // UnexpectedRollbackException sin cadena de causas, perdiendo el error SQL. - 21/05/2026
+            throw new RuntimeException(e.getMessage(), e);
         }
     }
 
