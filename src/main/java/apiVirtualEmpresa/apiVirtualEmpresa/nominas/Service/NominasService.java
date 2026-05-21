@@ -4,7 +4,6 @@ import apiVirtualEmpresa.apiVirtualEmpresa.config.JwtUtil;
 import apiVirtualEmpresa.apiVirtualEmpresa.config.Obtenertoken;
 import apiVirtualEmpresa.apiVirtualEmpresa.login.service.TokenExpirationService;
 import apiVirtualEmpresa.apiVirtualEmpresa.nominas.dto.NominasUtils;
-//kguanoluisa, [Se corrigio el paquete del import de Libs, ya que generaba error de resolucion de tipo][][2026-05-21]
 import apiVirtualEmpresa.apiVirtualEmpresa.libs.Libs;
 import envioCorreo.sendEmail;
 import jakarta.persistence.EntityManager;
@@ -1280,9 +1279,8 @@ public class NominasService {
                                 return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
                             }
                         } catch (Exception e) {
-                            response.put("message", "Error al intentar bloquear el usuario");
-                            response.put("status", "AA024");
-                            return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+                            //kguanoluisa, [Se relanza excepcion del catch interno para propagar rollback correcto en @Transactional][][2026-05-21]
+                            throw new RuntimeException("Error al intentar bloquear el usuario: " + e.getMessage(), e);
                         }
                     } else {
                         response.put("message", "Código temporal incorrecto. Intentos restantes: " + (3 - intentosRealizadoTokenFallos));
@@ -1477,10 +1475,8 @@ public class NominasService {
             return new ResponseEntity<>(response, HttpStatus.OK);
 
         } catch (Exception ex) {
-
-            response.put("status", "ERROR999");
-            response.put("error", ex.getMessage());
-            return new ResponseEntity<>(response, HttpStatus.INTERNAL_SERVER_ERROR);
+            //kguanoluisa, [Se relanza excepcion para que @Transactional haga rollback limpio y no lanze UnexpectedRollbackException][][2026-05-21]
+            throw new RuntimeException("Error en acreditarNominaInterna: " + ex.getMessage(), ex);
         }
     }
 
@@ -1699,8 +1695,6 @@ public class NominasService {
                     continue;
                 }
 
-
-                //kguanoluisa, [Se corrigio el nombre de la tabla de andplexa_ferchoooo a andplexa][][2026-05-21]
                 String sqlInsertPlexa =
                         "INSERT INTO andplexa (" +
                                 "plexa_cod_empre, plexa_cod_ofici, plexa_cod_cajas, plexa_cod_cliem, plexa_cod_cliof, " +
@@ -2418,10 +2412,8 @@ public class NominasService {
             return new ResponseEntity<>(response, HttpStatus.OK);
 
         } catch (Exception e) {
-            response.put("message", "Error interno del servidor");
-            response.put("status", "ERROR");
-            response.put("error", e.getMessage());
-            return new ResponseEntity<>(response, HttpStatus.INTERNAL_SERVER_ERROR);
+            //kguanoluisa, [Se relanza excepcion para que @Transactional haga rollback limpio. El metodo grabar2 hace INSERTs/CALLs contables][][2026-05-21]
+            throw new RuntimeException("Error en grabar2: " + e.getMessage(), e);
         }
     }
 
@@ -2557,11 +2549,8 @@ public class NominasService {
 
 
         } catch (Exception e) {
-            Map<String, Object> response = new HashMap<>();
-            response.put("message", "Error interno del servidor");
-            response.put("status", "ERROR");
-            response.put("error", e.getMessage());
-            return new ResponseEntity<>(response, HttpStatus.INTERNAL_SERVER_ERROR);
+            //kguanoluisa, [Se relanza excepcion para que @Transactional haga rollback del UPDATE e INSERT en vircodaccess][][2026-05-21]
+            throw new RuntimeException("Error en genCodNomExterna: " + e.getMessage(), e);
         }
     }
 
