@@ -252,14 +252,8 @@ public class PasswordService {
 
 
         } catch (Exception e) {
-            Map<String, Object> err = new HashMap<>();
-            err.put("status", "ERROR");
-            err.put("message", "Error interno del servidor");
-            err.put("error", e.getMessage());
-            allDataList.add(err);
-            response.put("success", false);
-            response.put("AllData", allDataList);
-            return new ResponseEntity<>(response, HttpStatus.INTERNAL_SERVER_ERROR);
+            //kguanoluisa, [Se relanza excepcion para que @Transactional haga rollback del UPDATE en cambioPassword][][2026-05-21]
+            throw new RuntimeException("Error interno del servidor en cambioPassword: " + e.getMessage(), e);
         }
     }
 
@@ -449,11 +443,8 @@ public class PasswordService {
             return new ResponseEntity<>(response, HttpStatus.OK);
 
         } catch (Exception e) {
-
-            response.put("message", "Error interno del servidor");
-            response.put("status", "ERROR8282");
-            response.put("error", e.getMessage());
-            return new ResponseEntity<>(response, HttpStatus.INTERNAL_SERVER_ERROR);
+            //kguanoluisa, [Se relanza excepcion para que @Transactional haga rollback de los UPDATEs/INSERTs en codcambioPassword][][2026-05-21]
+            throw new RuntimeException("Error interno del servidor en codcambioPassword: " + e.getMessage(), e);
         }
 
     }
