@@ -4,7 +4,7 @@ import apiVirtualEmpresa.apiVirtualEmpresa.config.JwtUtil;
 import apiVirtualEmpresa.apiVirtualEmpresa.config.Obtenertoken;
 import apiVirtualEmpresa.apiVirtualEmpresa.login.service.TokenExpirationService;
 import apiVirtualEmpresa.apiVirtualEmpresa.nominas.dto.NominasUtils;
-import apiVirtualEmpresa.apiVirtualEmpresa.libs.Libs;
+import apiVirtualEmpresas.virtualempresas.libs.Libs;
 import envioCorreo.sendEmail;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
