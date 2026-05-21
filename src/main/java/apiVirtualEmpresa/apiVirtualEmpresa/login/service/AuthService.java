@@ -193,7 +193,8 @@ public class AuthService {
                 }
             }
         } catch (Exception e) {
-            // Manejar silenciosamente para no romper el logout visual
+            //kguanoluisa, [Se relanza excepcion para que @Transactional haga rollback del UPDATE][][2026-05-21]
+            throw new RuntimeException("Error en logout al actualizar estado: " + e.getMessage(), e);
         }
 
         Cookie cookie = new Cookie("jwt", null);
@@ -491,12 +492,8 @@ public class AuthService {
                                     System.out.println("No se encontró al usuario para bloquear.");
                                 }
                             } catch (Exception e) {
-                                System.err.println("Error al bloquear el usuario en la base de datos: " + e.getMessage());
-                                response.put("success", false);
-                                response.put("message", "Error al intentar bloquear el usuario.");
-                                response.put("status", "AA10");
-                                response.put("errors", e.getMessage());
-                                return response;
+                                //kguanoluisa, [Se relanza excepcion para que @Transactional haga rollback del UPDATE de bloqueo][][2026-05-21]
+                                throw new RuntimeException("Error al intentar bloquear el usuario en la base de datos: " + e.getMessage(), e);
                             }
                             response.put("success", false);
                             response.put("message", "Se alcanzó el límite de intentos.");
@@ -738,10 +735,8 @@ public class AuthService {
                                 }
                             }
                         } catch (Exception e) {
-                            response.put("success", false);
-                            response.put("message", "Error al intentar bloquear el usuario");
-                            response.put("status", "AA024");
-                            status = HttpStatus.BAD_REQUEST;
+                            //kguanoluisa, [Se relanza excepcion para que @Transactional haga rollback del UPDATE/INSERT de bloqueo en validarCodSeguridad][][2026-05-21]
+                            throw new RuntimeException("Error al intentar bloquear el usuario: " + e.getMessage(), e);
                         }
                     } else {
                         response.put("success", false);
@@ -760,17 +755,8 @@ public class AuthService {
             }
             return new ResponseEntity<>(response, status);
         } catch (Exception e) {
-            Map<String, Object> errorResponse = new HashMap<>();
-            Map<String, Object> errorData = new HashMap<>();
-            List<Map<String, Object>> errorList = new ArrayList<>();
-
-            errorData.put("message", "Error interno del servidor");
-            errorData.put("status", "ERROR");
-            errorData.put("errors", e.getMessage());
-            errorList.add(errorData);
-            errorResponse.put("AllData", errorList);
-
-            return new ResponseEntity<>(errorResponse, HttpStatus.INTERNAL_SERVER_ERROR);
+            //kguanoluisa, [Se relanza excepcion para que @Transactional haga rollback de los UPDATEs/INSERTs en validarCodSeguridad][][2026-05-21]
+            throw new RuntimeException("Error interno del servidor en validarCodSeguridad: " + e.getMessage(), e);
         }
     }
 
@@ -892,7 +878,8 @@ public class AuthService {
                     qAct.executeUpdate();
                 }
             } catch (Exception ex) {
-                // Dejar continuar
+                //kguanoluisa, [Se relanza excepcion para que @Transactional haga rollback de los UPDATEs en aceptarTerminosCondiciones y evite UnexpectedRollbackException][][2026-05-21]
+                throw new RuntimeException("Error al activar sesion en andctrlvirlogin: " + ex.getMessage(), ex);
             }
 
             allData.put("status", "AUTHO");
@@ -903,17 +890,8 @@ public class AuthService {
             return new ResponseEntity<>(response, HttpStatus.OK);
 
         } catch (Exception e) {
-            Map<String, Object> errorResponse = new HashMap<>();
-            Map<String, Object> errorData = new HashMap<>();
-            List<Map<String, Object>> errorList = new ArrayList<>();
-
-            errorData.put("message", "Error interno del servidor");
-            errorData.put("status", "ERROR");
-            errorData.put("errors", e.getMessage());
-            errorList.add(errorData);
-            errorResponse.put("AllData", errorList);
-
-            return new ResponseEntity<>(errorResponse, HttpStatus.INTERNAL_SERVER_ERROR);
+            //kguanoluisa, [Se relanza excepcion para que @Transactional haga rollback de los UPDATEs en aceptarTerminosCondiciones][][2026-05-21]
+            throw new RuntimeException("Error interno del servidor en aceptarTerminosCondiciones: " + e.getMessage(), e);
         }
     }
 
