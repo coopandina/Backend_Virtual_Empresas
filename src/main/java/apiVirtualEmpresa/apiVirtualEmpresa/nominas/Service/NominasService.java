@@ -4,7 +4,8 @@ import apiVirtualEmpresa.apiVirtualEmpresa.config.JwtUtil;
 import apiVirtualEmpresa.apiVirtualEmpresa.config.Obtenertoken;
 import apiVirtualEmpresa.apiVirtualEmpresa.login.service.TokenExpirationService;
 import apiVirtualEmpresa.apiVirtualEmpresa.nominas.dto.NominasUtils;
-import apiVirtualEmpresas.virtualempresas.libs.Libs;
+//kguanoluisa, [Se corrigio el paquete del import de Libs, ya que generaba error de resolucion de tipo][][2026-05-21]
+import apiVirtualEmpresa.apiVirtualEmpresa.libs.Libs;
 import envioCorreo.sendEmail;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
@@ -1699,6 +1700,7 @@ public class NominasService {
                 }
 
 
+                //kguanoluisa, [Se corrigio el nombre de la tabla de andplexa_ferchoooo a andplexa][][2026-05-21]
                 String sqlInsertPlexa =
                         "INSERT INTO andplexa (" +
                                 "plexa_cod_empre, plexa_cod_ofici, plexa_cod_cajas, plexa_cod_cliem, plexa_cod_cliof, " +
@@ -1743,11 +1745,8 @@ public class NominasService {
 
 
         } catch (Exception e) {
-            Map<String, Object> err = new HashMap<>();
-            err.put("status", "ERROR500");
-            err.put("errors", e.getMessage());
-            response.put("success", false);
-            return new ResponseEntity<>(err, HttpStatus.INTERNAL_SERVER_ERROR);
+            //kguanoluisa, [Se cambio el retorno de ResponseEntity por throw RuntimeException para propagar el error y evitar UnexpectedRollbackException][][2026-05-21]
+            throw new RuntimeException("Error en cargaNominaExterna: " + e.getMessage(), e);
         }
     }
 
