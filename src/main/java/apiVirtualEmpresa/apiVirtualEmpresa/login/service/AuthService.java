@@ -1,11 +1,14 @@
 package apiVirtualEmpresa.apiVirtualEmpresa.login.service;
+
 import apiVirtualEmpresa.apiVirtualEmpresa.config.JwtUtil;
 import apiVirtualEmpresa.apiVirtualEmpresa.config.Obtenertoken;
-import sms.SendSMS;
-import envioCorreo.sendEmail;
-import apiVirtualEmpresas.virtualempresas.libs.Libs;
 import apiVirtualEmpresa.apiVirtualEmpresa.login.dto.CodSegurdiad;
 import apiVirtualEmpresa.apiVirtualEmpresa.login.dto.UserCredentials;
+import apiVirtualEmpresas.virtualempresas.libs.Libs;
+import envioCorreo.sendEmail;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
+import jakarta.persistence.Query;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -13,14 +16,11 @@ import libs.PassSecure;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
-
-import jakarta.persistence.*;
+import sms.SendSMS;
 
 import java.util.*;
 
@@ -47,7 +47,6 @@ public class AuthService {
             Map<String, Object> response = new HashMap<>();
             List<Map<String, Object>> allDataList = new ArrayList<>();
             HttpStatus status = HttpStatus.OK;
-
 
 
             String mensajeValBlancos = validarCredencialesBlanco(request);
@@ -88,14 +87,14 @@ public class AuthService {
                 return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
             }
 
-            List<Object[]> resultados =valida_usuario_id(request.getClienIdeClien(), request.getUsvcoIdeUsv());
+            List<Object[]> resultados = valida_usuario_id(request.getClienIdeClien(), request.getUsvcoIdeUsv());
 
             if (!resultados.isEmpty()) {
 
                 String rucIdenClie = request.getClienIdeClien();
                 String ideClieUsu = request.getUsvcoIdeUsv();
                 String pwsUsoClie = request.getUsvcoPswd();
-                Map<String, Object> validacion = valida_LoginBDD(rucIdenClie, ideClieUsu,pwsUsoClie, accesoDipTermi);
+                Map<String, Object> validacion = valida_LoginBDD(rucIdenClie, ideClieUsu, pwsUsoClie, accesoDipTermi);
                 if (Boolean.TRUE.equals(validacion.get("success"))) {
                     String cod_cliente = (String) validacion.get("CODCLIENTE");
 
@@ -118,7 +117,7 @@ public class AuthService {
                     querySession.executeUpdate();
 
                     // 1) Token generado incluyendo el sessionId
-                    String token = jwtUtil.generateToken(request.getUsvcoIdeUsv(),request.getClienIdeClien(),cod_cliente, sessionId);
+                    String token = jwtUtil.generateToken(request.getUsvcoIdeUsv(), request.getClienIdeClien(), cod_cliente, sessionId);
 
                     // 2) Crear Cookie HttpOnly (modo local)
                     Cookie cookie = new Cookie("jwt", token);
@@ -161,7 +160,7 @@ public class AuthService {
                 }
                 allDataList.add(allData);
                 response.put("AllData", allDataList);
-            }else{
+            } else {
                 allData.put("message", "Por favor, revise que la informacion ingresada sea la correcta, ruc o identificacion ");
                 allData.put("status", "AA3684");
                 allData.put("errors", "Credenciales incorrectas");
@@ -177,7 +176,7 @@ public class AuthService {
 
     // [kguanoluisa] - Cierre lógico de sesión en base de datos y expiración de cookies - 12/05/2026
     @Transactional
-    public ResponseEntity<Map<String,Object>> logout(HttpServletRequest request, HttpServletResponse responseServe) {
+    public ResponseEntity<Map<String, Object>> logout(HttpServletRequest request, HttpServletResponse responseServe) {
         Map<String, Object> allData = new HashMap<>();
         Map<String, Object> response = new HashMap<>();
         List<Map<String, Object>> allDataList = new ArrayList<>();
@@ -214,8 +213,6 @@ public class AuthService {
     }
 
 
-
-
     public String validarCredencialesBlanco(UserCredentials request) {
         if (request.getClienIdeClien() == null || request.getClienIdeClien().isEmpty()) {
 
@@ -231,7 +228,7 @@ public class AuthService {
         return null;
     }
 
-    public String usarioNoSerCorreo(UserCredentials request){
+    public String usarioNoSerCorreo(UserCredentials request) {
         String regexCorreo = "^[\\w-]+(?:\\.[\\w-]+)*@[\\w-]+(?:\\.[\\w-]+)+$";
         String ideruc = request.getClienIdeClien();
         String ideclien = request.getUsvcoIdeUsv();
@@ -244,6 +241,7 @@ public class AuthService {
         }
         return null;
     }
+
     public List<Object[]> valida_usuario_id(String ideruc, String ideusu) {
 
         String sql = "SELECT clien_ide_clien,usvco_psw_usvco,clien_cod_ofici,usvco_ctr_estad,usvco_ctr_bloq " +
@@ -259,11 +257,12 @@ public class AuthService {
 
         return results;
     }
+
     /**
      * Funcion para validar Login con LA BDD
      */
 
-    public Map<String, Object> valida_LoginBDD(String  rudIdenClie, String ideClieUsu,String pwsUsoClie, String accesoDipTermi) {
+    public Map<String, Object> valida_LoginBDD(String rudIdenClie, String ideClieUsu, String pwsUsoClie, String accesoDipTermi) {
         Map<String, Object> response = new HashMap<>();
         try {
             // Consulta para verificar usuario y contraseña
@@ -343,22 +342,19 @@ public class AuthService {
                     String clienCodClie1 = row10[1].toString().trim();
 
 
-
-
                     if (cliacUsuVirtu.trim().equals(rudIdenClie.trim()) &&
-                            passDec.trim().equals(pwsUsoClie.trim()) && ideClieUsu.trim().equals(clienIdeVirtu.trim()) ) {
+                            passDec.trim().equals(pwsUsoClie.trim()) && ideClieUsu.trim().equals(clienIdeVirtu.trim())) {
 
 
                         intentosRealizados = 0;
                         if (!results1.isEmpty()) {
                             if ("0".equals(cliacBloq.trim()) || "0".equals(clien_estado.trim())) {
                                 response.put("success", false);
-                                response.put("message", "El usuario está bloqueado o no está activo." );
+                                response.put("message", "El usuario está bloqueado o no está activo.");
                                 response.put("status", "AA1812");
                                 response.put("errors", "Usuario bloqueado.");
                                 return response;
-                            }
-                            else{
+                            } else {
                                 // [kguanoluisa] - Bloquear si ya existe una sesión activa hace menos de 15 min - 12/05/2026
                                 String sqlCheckSesion = "SELECT COUNT(*) FROM andctrlvirlogin " +
                                         "WHERE ctrlvirlogin_ide_virtual = :ide " +
@@ -393,18 +389,17 @@ public class AuthService {
                                     String clienNumero = row2[3].toString().trim();
                                     String clienCedula = row2[4].toString().trim();
                                     String clienCodClie = row2[5].toString().trim();
-                                   // System.out.println("Consulta BDD= APELLIDOS: " + clienApellidos + " NOMBRES: " + clienNombres + " EMAIL: " + clienEmail + " CELULAR " + clienNumero);
+                                    // System.out.println("Consulta BDD= APELLIDOS: " + clienApellidos + " NOMBRES: " + clienNombres + " EMAIL: " + clienEmail + " CELULAR " + clienNumero);
                                     Libs fechaHoraService = new Libs(entityManager);
 
                                     String FechaIngresoLogin = fechaHoraService.obtenerFechaYHora();
-                                //    System.out.println(FechaIngresoLogin);
+                                    //    System.out.println(FechaIngresoLogin);
 
                                     String tokenTemp = codigoAleatorioTemp();
 
 
-
                                     SendSMS smsCodigoTemp = new SendSMS();
-                                    smsCodigoTemp.sendSecurityCodeSMS(clienNumero,"1150", tokenTemp, "Iniciar Sesion",FechaIngresoLogin);
+                                    smsCodigoTemp.sendSecurityCodeSMS(clienNumero, "1150", tokenTemp, "Iniciar Sesion", FechaIngresoLogin);
                                     sendEmail enviaCorreoToken = new sendEmail();
                                     tokenExpirationService.programarExpiracionToken(rudIdenClie, tokenTemp, "8");
                                     enviaCorreoToken.sendEmailTokenTemp(clienApellidos, clienNombres, FechaIngresoLogin, clienEmail, tokenTemp);
@@ -416,7 +411,7 @@ public class AuthService {
 
                                     String sqlInsertToken = "INSERT INTO vircodaccess (codaccess_cedula, codaccess_usuario, codaccess_codigo_temporal, codsms_codigo, codaccess_estado, codaccess_fecha) VALUES (:codaccess_cedula, :codaccess_usuario, :codaccess_codigo_temporal, :codsms_codigo, :codaccess_estado, :codaccess_fecha)";
                                     Query resultInsertTokenAcceso = entityManager.createNativeQuery(sqlInsertToken);
-                                    resultInsertTokenAcceso.setParameter("codaccess_cedula",  cliacUsuVirtu);
+                                    resultInsertTokenAcceso.setParameter("codaccess_cedula", cliacUsuVirtu);
                                     resultInsertTokenAcceso.setParameter("codaccess_usuario", clienCedula);
                                     resultInsertTokenAcceso.setParameter("codaccess_codigo_temporal", tokenTemp);
                                     resultInsertTokenAcceso.setParameter("codsms_codigo", 8);
@@ -425,7 +420,7 @@ public class AuthService {
                                     resultInsertTokenAcceso.executeUpdate();
                                     tokenExpirationService.programarExpiracionToken(clienCedula, tokenTemp, "8");
 
-                                                                      String accesoMacTermi = " ";
+                                    String accesoMacTermi = " ";
                                     Libs fechaHoraServicee = new Libs(entityManager);
                                     String accesoFecAcces = fechaHoraServicee.obtenerFechaYHora();
                                     String accesoCodAcces = generarNumberoSerial(1000000, 9999999);
@@ -445,7 +440,7 @@ public class AuthService {
                                     resultInsertAcceso.setParameter("acceso_cod_tacce", accesoCodTacce);
                                     resultInsertAcceso.executeUpdate();
 
-                                   // String token = JwtUtil.generateToken(cliacUsuVirtu, clienCedula, clienCodClie);
+                                    // String token = JwtUtil.generateToken(cliacUsuVirtu, clienCedula, clienCodClie);
                                     response.put("success", true);
                                     response.put("message", "Inicio de sesión exitoso.");
                                     response.put("CODCLIENTE", clienCodClie);
@@ -458,7 +453,7 @@ public class AuthService {
                     } else {
                         intentosRealizados++;
 
-                        if(intentosRealizados >= 3) {
+                        if (intentosRealizados >= 3) {
                             String sqlBloqUser = "UPDATE andusvco SET usvco_ctr_bloq = :bloqueo WHERE usvco_ide_clien = :rudIdenClie AND usvco_ide_usvco = :ideClieUsu";
                             Query resultBloqUser = entityManager.createNativeQuery(sqlBloqUser);
                             resultBloqUser.setParameter("bloqueo", "0");
@@ -515,7 +510,7 @@ public class AuthService {
             response.put("success", false);
             response.put("message", "Credenciales incorrectas.");
             response.put("status", "AA12");
-            response.put("errors", "Contraseña incorrecta o usuario no encontrado." );
+            response.put("errors", "Contraseña incorrecta o usuario no encontrado.");
             return response;
 
         } catch (Exception e) {
@@ -556,11 +551,11 @@ public class AuthService {
 
             String cliacUsuVirtu = authentication.getName();
             String rucIdenClie = jwtUtil.getrucIdenClie(token);
-            String numSocio    = jwtUtil.getcodcliente(token);
+            String numSocio = jwtUtil.getcodcliente(token);
 
             if (cliacUsuVirtu == null || rucIdenClie == null || numSocio == null) {
                 allData.put("message", "Datos del token incompletos");
-                allData.put("status", "AA022"  );
+                allData.put("status", "AA022");
                 allData.put("errors", "ERROR EN LA AUTENTICACIÓN");
                 allDataList.add(allData);
                 response.put("AllData", allDataList);
@@ -656,7 +651,7 @@ public class AuthService {
                     }
 
                     intentosRealizadoTokenFallos = 0;
-                }else{
+                } else {
                     intentosRealizadoTokenFallos++;
                     if (intentosRealizadoTokenFallos >= 3) {
                         String sqlBloqUser = "UPDATE andusvco SET usvco_ctr_bloq = :bloqueo WHERE usvco_ide_clien = :rudIdenClie AND usvco_ide_usvco = :ideClieUsu";
@@ -681,7 +676,7 @@ public class AuthService {
                                     String clienEmail = row2[1].toString().trim();
                                     String IpIngreso = codSeguridad.getIpterminal();
                                     sendEmail emailBloq = new sendEmail();
-                                    emailBloq.sendEmailBloqueo("", clienNombres, FechaHora,clienEmail, IpIngreso );
+                                    emailBloq.sendEmailBloqueo("", clienNombres, FechaHora, clienEmail, IpIngreso);
 
                                     String accesoDipTermi = codSeguridad.getIpterminal();
                                     String accesoMacTermi = " ";
@@ -731,7 +726,6 @@ public class AuthService {
                                     }
 
 
-
                                     Map<String, Object> data = new HashMap<>();
                                     data.put("message", "Usuario bloqueado por exceder límite de intentos");
                                     data.put("status", "AA025");
@@ -757,7 +751,7 @@ public class AuthService {
 
                     }
                 }
-            }else {
+            } else {
                 allData.put("status", "AA027");
                 allData.put("errors", "CODIGO TEMPORAL EXPIRADO, POR EXCEDER LOS 4 MINUTOS");
                 allDataList.add(allData);
@@ -799,6 +793,7 @@ public class AuthService {
         int numeroAleatorio = 100000 + random.nextInt(900000); // Asegura 6 dígitos
         return String.valueOf(numeroAleatorio);
     }
+
     public ResponseEntity<Map<String, Object>> aceptarTerminosCondiciones(HttpServletRequest request, Authentication authentication, Map<String, String> body) {
         try {
             Map<String, Object> allData = new HashMap<>();
@@ -825,7 +820,7 @@ public class AuthService {
 
             String cliacUsuVirtu = authentication.getName();
             String rucIdenClie = jwtUtil.getrucIdenClie(token);
-            String numSocio    = jwtUtil.getcodcliente(token);
+            String numSocio = jwtUtil.getcodcliente(token);
 
             if (cliacUsuVirtu == null || rucIdenClie == null || numSocio == null) {
                 allData.put("message", "Datos del token incompletos");
