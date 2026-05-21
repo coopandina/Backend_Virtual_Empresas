@@ -1,4 +1,5 @@
 package apiVirtualEmpresa.apiVirtualEmpresa.VerificarCuenta.Service;
+
 import apiVirtualEmpresa.apiVirtualEmpresa.VerificarCuenta.dto.VerificarCuentaUtils;
 import apiVirtualEmpresa.apiVirtualEmpresa.config.JwtUtil;
 import apiVirtualEmpresa.apiVirtualEmpresa.config.Obtenertoken;
@@ -18,6 +19,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+
 @Service
 @Transactional
 public class VerificarCuentaService {
