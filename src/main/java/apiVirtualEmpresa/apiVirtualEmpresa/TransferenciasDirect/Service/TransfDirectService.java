@@ -216,9 +216,7 @@ public class TransfDirectService {
                             return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
                         }
                     } catch (Exception e) {
-                        response.put("message", "Error al intentar bloquear el usuario");
-                        response.put("status", "AA024");
-                        return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+                        throw new RuntimeException(e.getMessage(), e);
                     }
                 } else {
                     response.put("message", "Código temporal incorrecto. Intentos restantes: " + (3 - intentosRealizadoTokenFallos));
@@ -707,11 +705,7 @@ public class TransfDirectService {
             return new ResponseEntity<>(response, HttpStatus.OK);
 
         } catch (Exception e) {
-            Map<String, Object> response = new HashMap<>();
-            response.put("message", "Error interno del servidor");
-            response.put("status", "ERROR");
-            response.put("error", e.getMessage());
-            return new ResponseEntity<>(response, HttpStatus.INTERNAL_SERVER_ERROR);
+            throw new RuntimeException(e.getMessage(), e);
         }
     }
 
@@ -730,7 +724,7 @@ public class TransfDirectService {
             }
             return resultadoSaldo.get(0)[0].toString().trim();
         } catch (Exception e) {
-            throw new Exception("Error al obtener el saldo disponible: " + e.getMessage(), e);
+            throw new RuntimeException(e.getMessage(), e);
         }
     }
 
