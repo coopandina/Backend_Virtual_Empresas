@@ -44,6 +44,7 @@ public class GlobalExceptionHandler {
     private static final int SQL_ERR_TABLA_INEXISTENTE  = -206;
     private static final int SQL_ERR_COLUMNA_INEXISTENTE = -217;
     private static final int SQL_ERR_REGISTRO_DUPLICADO  = -268;
+    private static final int SQL_ERR_ROUTINE_INEXISTENTE = -674;
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<Map<String, Object>> handleAllExceptions(Exception ex) {
@@ -104,6 +105,14 @@ public class GlobalExceptionHandler {
                     : "Registro duplicado: ya existe un registro con esos datos en la base de datos.";
             setError(response, msg, "ERROR_REGISTRO_DUPLICADO");
 
+        } else if (sqlInfo.code == SQL_ERR_ROUTINE_INEXISTENTE ||
+                (sqlError.contains("Routine (") && sqlError.contains("can not be resolved"))) {
+            String routineName = extractNameAfterMarker(sqlError, "Routine");
+            String msg = routineName != null
+                    ? "El procedimiento o rutina especificada (" + routineName + ") no existe en la base de datos."
+                    : "El procedimiento o rutina especificada no existe en la base de datos.";
+            setError(response, msg, "ERROR_ROUTINE_INEXISTENTE");
+
         } else {
             setError(response, "Error de base de datos (código " + sqlInfo.code + "): " + sqlError, "ERROR_BASE_DATOS");
         }
@@ -157,6 +166,8 @@ public class GlobalExceptionHandler {
                                 msg.contains("table (")                ||
                                 msg.contains("not found in any table") ||
                                 msg.contains("Column (")               ||
+                                msg.contains("Routine (")              ||
+                                msg.contains("can not be resolved")    ||
                                 msg.contains("andctrlvirlogin"))) {
                 // No es SQLException directa, extraer código del mensaje si aparece (ej: "SQL Error: -217")
                 int code = extractSqlCode(msg);
