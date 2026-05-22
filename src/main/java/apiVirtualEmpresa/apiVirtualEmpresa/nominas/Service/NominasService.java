@@ -209,18 +209,19 @@ public class NominasService {
 
             String sql;
 
+            //kguanoluisa, [Se modifico query numNomina valservi=2 para incluir cnxifina y se quitaron filtros codifina. En valservi=1 se igualo a 3 columnas. Se mapean cod_banco y nom_banco en JSON][numnomina, ifina_nom_ifina, plexa_cod_ifina][22/05/2026]
             if (valservi.equals("2")) {
                 sql = """
-                            SELECT DISTINCT plexa_num_plnex AS numnomina
+                            SELECT DISTINCT plexa_num_plnex AS numnomina, ifi.ifina_nom_ifina, plexa_cod_ifina
                             FROM andplexa
+                            JOIN cnxifina ifi ON ifi.ifina_cod_ifina = plexa_cod_ifina
                             WHERE plexa_ide_clien = :txtideclien
-                              AND plexa_cod_ifina = :codifina
                               AND plexa_ctr_trans = :tipestad
                               AND plexa_cod_ctaor = :codctadp
                         """;
             } else {
                 sql = """
-                            SELECT DISTINCT plina_num_plina AS numnomina
+                            SELECT DISTINCT plina_num_plina AS numnomina, 'INTERNA' AS ifina_nom_ifina, 0 AS plexa_cod_ifina
                             FROM andplina
                             WHERE plina_cod_ctaor = :codctadp
                               AND plina_ctr_trans = :tipestad
@@ -230,15 +231,13 @@ public class NominasService {
             query.setParameter("tipestad", tipestado.equals("3") ? "0" : tipestado);
 
             if (valservi.equals("2")) {
-                String codbanco = requestData.getCodbanco();
-                query.setParameter("codifina", codbanco);
                 query.setParameter("txtideclien", cliacUsuRuc);
                 query.setParameter("codctadp", ctaOrigen);
             } else {
                 query.setParameter("codctadp", ctaOrigen);
             }
 
-            List<Object> results = query.getResultList();
+            List<Object[]> results = query.getResultList();
 
             if (results.isEmpty()) {
                 Map<String, Object> err = new HashMap<>();
@@ -251,13 +250,18 @@ public class NominasService {
 
             int i = 1;
 
-            for (Object row : results) {
+            for (Object[] row : results) {
 
                 Map<String, Object> datos = new HashMap<>();
 
                 datos.put("registros", i++);
-                datos.put("codnomina", row.toString().trim());
-                datos.put("desnomina", row.toString().trim());
+                datos.put("codnomina", row[0] != null ? row[0].toString().trim() : "");
+                datos.put("desnomina", row[0] != null ? row[0].toString().trim() : "");
+
+                if (valservi.equals("2")) {
+                    datos.put("nom_banco", row[1] != null ? row[1].toString().trim() : "");
+                    datos.put("cod_banco", row[2] != null ? row[2].toString().trim() : "");
+                }
 
                 allDataList.add(datos);
             }
