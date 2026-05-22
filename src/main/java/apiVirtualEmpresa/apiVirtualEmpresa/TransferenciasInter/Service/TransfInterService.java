@@ -348,11 +348,8 @@ public class TransfInterService {
             return new ResponseEntity<>(response, HttpStatus.OK);
 
         } catch (Exception e) {
-            Map<String, Object> response = new HashMap<>();
-            response.put("message", "Error interno del servidor");
-            response.put("status", "ERROR8282");
-            response.put("error", e.getMessage());
-            return new ResponseEntity<>(response, HttpStatus.INTERNAL_SERVER_ERROR);
+            //kguanoluisa, [Se reemplazo la respuesta JSON de error por RuntimeException manteniendo el mensaje original][N/A][22/05/2026]
+            throw new RuntimeException("Error interno del servidor: " + e.getMessage(), e);
         }
     }
 
@@ -555,10 +552,8 @@ public class TransfInterService {
                             return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
                         }
                     } catch (Exception e) {
-
-                        response.put("message", "Error al intentar bloquear el usuario");
-                        response.put("status", "AA4823");
-                        return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+                        //kguanoluisa, [Se reemplazo la respuesta JSON de error por RuntimeException manteniendo el mensaje original][N/A][22/05/2026]
+                        throw new RuntimeException("Error al intentar bloquear el usuario: " + e.getMessage(), e);
                     }
                 } else {
                     response.put("message", "Código temporal incorrecto. Intentos restantes: " + (3 - intentosRealizadoTokenFallosInterban));
@@ -1027,10 +1022,8 @@ public class TransfInterService {
             return new ResponseEntity<>(response, HttpStatus.OK);
 
         } catch (Exception e) {
-            response.put("message", "Error interno del servidor");
-            response.put("status", "ERROR");
-            response.put("error", e.getMessage());
-            return new ResponseEntity<>(response, HttpStatus.INTERNAL_SERVER_ERROR);
+            //kguanoluisa, [Se reemplazo la respuesta JSON de error por RuntimeException manteniendo el mensaje original][N/A][22/05/2026]
+            throw new RuntimeException("Error interno del servidor: " + e.getMessage(), e);
         }
     }
 
@@ -1059,7 +1052,8 @@ public class TransfInterService {
             }
             return resultadoSaldo.get(0)[0].toString().trim();
         } catch (Exception e) {
-            throw new Exception("Error al obtener el saldo disponible: " + e.getMessage(), e);
+            //kguanoluisa, [Se reemplazo la respuesta JSON de error por RuntimeException manteniendo el mensaje original][N/A][22/05/2026]
+            throw new RuntimeException("Error al obtener el saldo disponible: " + e.getMessage(), e);
         }
     }
 

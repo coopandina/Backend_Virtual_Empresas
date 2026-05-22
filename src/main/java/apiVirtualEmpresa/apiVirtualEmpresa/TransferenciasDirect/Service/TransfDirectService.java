@@ -216,7 +216,8 @@ public class TransfDirectService {
                             return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
                         }
                     } catch (Exception e) {
-                        throw new RuntimeException(e.getMessage(), e);
+                        //kguanoluisa, [Se reemplazo la respuesta JSON de error por RuntimeException manteniendo el mensaje original][N/A][22/05/2026]
+                        throw new RuntimeException("Error al intentar bloquear el usuario: " + e.getMessage(), e);
                     }
                 } else {
                     response.put("message", "Código temporal incorrecto. Intentos restantes: " + (3 - intentosRealizadoTokenFallos));
@@ -705,7 +706,8 @@ public class TransfDirectService {
             return new ResponseEntity<>(response, HttpStatus.OK);
 
         } catch (Exception e) {
-            throw new RuntimeException(e.getMessage(), e);
+            //kguanoluisa, [Se reemplazo la respuesta JSON de error por RuntimeException manteniendo el mensaje original][N/A][22/05/2026]
+            throw new RuntimeException("Error interno del servidor: " + e.getMessage(), e);
         }
     }
 
@@ -724,7 +726,8 @@ public class TransfDirectService {
             }
             return resultadoSaldo.get(0)[0].toString().trim();
         } catch (Exception e) {
-            throw new RuntimeException(e.getMessage(), e);
+            //kguanoluisa, [Se reemplazo la respuesta JSON de error por RuntimeException manteniendo el mensaje original][N/A][22/05/2026]
+            throw new RuntimeException("Error al obtener el saldo disponible: " + e.getMessage(), e);
         }
     }
 
