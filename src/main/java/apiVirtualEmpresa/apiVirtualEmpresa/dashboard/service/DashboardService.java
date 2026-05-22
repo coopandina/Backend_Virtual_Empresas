@@ -450,7 +450,8 @@ public class DashboardService {
             return new ResponseEntity<>(response, HttpStatus.OK);
 
         } catch (Exception e) {
-            throw new RuntimeException(e.getMessage(), e);
+            //kguanoluisa, [Se mantiene RuntimeException agregando mensaje descriptivo][N/A][22/05/2026]
+            throw new RuntimeException("Error interno al consultar cuentas propias: " + e.getMessage(), e);
         }
     }
 
@@ -755,7 +756,7 @@ public class DashboardService {
             return valor != null ? valor.toString().trim() : "0.00";
 
         } catch (Exception e) {
-
+            //kguanoluisa, [Se agregó comentario a RuntimeException manteniendo el mensaje original][N/A][22/05/2026]
             throw new RuntimeException("Error al obtener el saldo disponible: " + e.getMessage(), e);
         }
     }
