@@ -11,27 +11,27 @@ import java.util.Map;
 
 /**
  * Manejador global de excepciones para toda la aplicación.
- *
+ * <p>
  * Utiliza @ControllerAdvice para interceptar automáticamente cualquier excepción
  * que no haya sido capturada dentro de un controlador o servicio (es decir, que haya
  * propagado hacia arriba sin un catch propio). Spring la enruta aquí antes de devolver
  * la respuesta HTTP al cliente, garantizando un formato de error uniforme en todos los endpoints.
- *
+ * <p>
  * Flujo de clasificación de errores:
- *   1. Recorre la cadena de causas buscando el error SQL raíz (getRootSqlError).
- *      Retorna el código numérico Informix y el mensaje del error.
- *   2. Clasifica por código numérico primero (más confiable), texto como respaldo:
- *        - ERROR_TABLA_INEXISTENTE  : código -206 / tabla no existe en la BD.
- *        - ERROR_COLUMNA_INEXISTENTE: código -217 / columna no encontrada.
- *        - ERROR_REGISTRO_DUPLICADO : código -268 / violación de constraint unique.
- *        - ERROR_BASE_DATOS         : cualquier otro error SQL no clasificado.
- *   3. Si no hay error SQL, evalúa casos especiales:
- *        - ERROR_FECHAS_BD           : incompatibilidad de fechas (función pkmprdr).
- *        - ERROR_TRANSACCION_REVERTIDA: rollback inesperado de Spring.
- *        - ERROR_DESCONOCIDO         : cualquier otro error no identificado.
- *
+ * 1. Recorre la cadena de causas buscando el error SQL raíz (getRootSqlError).
+ * Retorna el código numérico Informix y el mensaje del error.
+ * 2. Clasifica por código numérico primero (más confiable), texto como respaldo:
+ * - ERROR_TABLA_INEXISTENTE  : código -206 / tabla no existe en la BD.
+ * - ERROR_COLUMNA_INEXISTENTE: código -217 / columna no encontrada.
+ * - ERROR_REGISTRO_DUPLICADO : código -268 / violación de constraint unique.
+ * - ERROR_BASE_DATOS         : cualquier otro error SQL no clasificado.
+ * 3. Si no hay error SQL, evalúa casos especiales:
+ * - ERROR_FECHAS_BD           : incompatibilidad de fechas (función pkmprdr).
+ * - ERROR_TRANSACCION_REVERTIDA: rollback inesperado de Spring.
+ * - ERROR_DESCONOCIDO         : cualquier otro error no identificado.
+ * <p>
  * Todos los errores retornan HTTP 500 con el formato JSON:
- *   { "success": false, "status": "...", "message": "...", "error": "..." }
+ * { "success": false, "status": "...", "message": "...", "error": "..." }
  *
  * @author kguanoluisa
  * @since 11/05/2026
@@ -41,9 +41,9 @@ import java.util.Map;
 public class GlobalExceptionHandler {
 
     // Códigos de error SQL de Informix manejados
-    private static final int SQL_ERR_TABLA_INEXISTENTE  = -206;
+    private static final int SQL_ERR_TABLA_INEXISTENTE = -206;
     private static final int SQL_ERR_COLUMNA_INEXISTENTE = -217;
-    private static final int SQL_ERR_REGISTRO_DUPLICADO  = -268;
+    private static final int SQL_ERR_REGISTRO_DUPLICADO = -268;
     private static final int SQL_ERR_ROUTINE_INEXISTENTE = -674;
 
     @ExceptionHandler(Exception.class)
@@ -70,6 +70,7 @@ public class GlobalExceptionHandler {
     private static class SqlErrorInfo {
         final int code;
         final String message;
+
         SqlErrorInfo(int code, String message) {
             this.code = code;
             this.message = message;
@@ -160,15 +161,15 @@ public class GlobalExceptionHandler {
             }
             String msg = cause.getMessage();
             if (msg != null && (msg.contains("is not in the database") ||
-                                msg.contains("The specified table")    ||
-                                msg.contains("Unique constraint")      ||
-                                msg.contains("SQL Error:")             ||
-                                msg.contains("table (")                ||
-                                msg.contains("not found in any table") ||
-                                msg.contains("Column (")               ||
-                                msg.contains("Routine (")              ||
-                                msg.contains("can not be resolved")    ||
-                                msg.contains("andctrlvirlogin"))) {
+                    msg.contains("The specified table") ||
+                    msg.contains("Unique constraint") ||
+                    msg.contains("SQL Error:") ||
+                    msg.contains("table (") ||
+                    msg.contains("not found in any table") ||
+                    msg.contains("Column (") ||
+                    msg.contains("Routine (") ||
+                    msg.contains("can not be resolved") ||
+                    msg.contains("andctrlvirlogin"))) {
                 // No es SQLException directa, extraer código del mensaje si aparece (ej: "SQL Error: -217")
                 int code = extractSqlCode(msg);
                 return new SqlErrorInfo(code, msg);

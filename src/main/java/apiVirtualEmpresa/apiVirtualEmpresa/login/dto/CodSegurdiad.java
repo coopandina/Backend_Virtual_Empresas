@@ -22,7 +22,6 @@ public class CodSegurdiad {
     }
 
 
-
     public void setCodaccess_codigo_temporal(String codaccess_codigo_temporal) {
         Codaccess_codigo_temporal = codaccess_codigo_temporal;
     }

@@ -1,4 +1,5 @@
 package apiVirtualEmpresa.apiVirtualEmpresa.login.dto;
+
 public class AuthResponse {
     private String message;
     private String username;
@@ -9,6 +10,11 @@ public class AuthResponse {
     }
 
     // Getters
-    public String getMessage() { return message; }
-    public String getUsername() { return username; }
+    public String getMessage() {
+        return message;
+    }
+
+    public String getUsername() {
+        return username;
+    }
 }

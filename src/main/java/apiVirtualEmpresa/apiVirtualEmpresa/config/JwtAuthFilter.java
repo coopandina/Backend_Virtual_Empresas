@@ -51,13 +51,13 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             String ruc = jwtUtil.getrucIdenClie(token);
             String username = jwtUtil.getUsernameFromToken(token);
 
-            if (sessionId != null 
-                    && !path.startsWith("/api/auth/") 
+            if (sessionId != null
+                    && !path.startsWith("/api/auth/")
                     && !path.startsWith("/api/firma-sri/")
-                    && !path.equals("/api/verificar/codigo_seguridad") 
+                    && !path.equals("/api/verificar/codigo_seguridad")
                     && !path.equals("/api/verificar/terminos-condiciones")
                     && !path.equals("/api/password/firmar")) {
-                
+
                 try {
                     String sqlCheck = "SELECT COUNT(*) FROM andctrlvirlogin " +
                             "WHERE ctrlvirlogin_ide_virtual = :ruc " +
@@ -80,7 +80,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                     }
 
                     // Registrar Latido de Actividad (Heartbeat)
-                    org.springframework.transaction.support.TransactionTemplate tt = 
+                    org.springframework.transaction.support.TransactionTemplate tt =
                             new org.springframework.transaction.support.TransactionTemplate(transactionManager);
                     tt.execute(status -> {
                         String sqlHeartbeat = "UPDATE andctrlvirlogin SET ctrlvirlogin_fecha_virtual = CURRENT " +

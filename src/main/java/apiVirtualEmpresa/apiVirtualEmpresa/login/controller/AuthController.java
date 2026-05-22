@@ -1,11 +1,9 @@
 package apiVirtualEmpresa.apiVirtualEmpresa.login.controller;
 
 import apiVirtualEmpresa.apiVirtualEmpresa.config.JwtUtil;
-
 import apiVirtualEmpresa.apiVirtualEmpresa.login.dto.UserCredentials;
 import apiVirtualEmpresa.apiVirtualEmpresa.login.dto.UserResponse;
 import apiVirtualEmpresa.apiVirtualEmpresa.login.service.AuthService;
-import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -68,9 +66,9 @@ public class AuthController {
     }
 
 
-    @PostMapping (value = "/login")
-    public ResponseEntity <Map<String,Object>>accessLogin(@RequestBody UserCredentials request, HttpServletResponse response){
-        return authService.accesslogin(request,response);
+    @PostMapping(value = "/login")
+    public ResponseEntity<Map<String, Object>> accessLogin(@RequestBody UserCredentials request, HttpServletResponse response) {
+        return authService.accesslogin(request, response);
     }
 
 }

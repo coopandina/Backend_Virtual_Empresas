@@ -24,7 +24,7 @@ public class TransfDirectUtils {
     private String cedulaBeneficiario;
     private Integer tipoctabce;
     private String saldoDisponible;
-     private String ipterminal;
+    private String ipterminal;
 
     public Integer getTipoctabce() {
         return tipoctabce;

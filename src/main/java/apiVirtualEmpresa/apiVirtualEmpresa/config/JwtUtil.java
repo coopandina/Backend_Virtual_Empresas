@@ -24,7 +24,7 @@ public class JwtUtil {
         return Keys.hmacShaKeyFor(secret.getBytes());
     }
 
-    public String generateToken(String username,String rucIdenClie,String codcliente) {
+    public String generateToken(String username, String rucIdenClie, String codcliente) {
         return Jwts.builder()
                 .setSubject(username)
                 .claim("rucIdenClie", rucIdenClie)
@@ -77,7 +77,8 @@ public class JwtUtil {
     public String getrucIdenClie(String token) {
         return (String) getClaims(token).get("rucIdenClie");
     }
-    public String  getcodcliente(String token) {
+
+    public String getcodcliente(String token) {
         return (String) getClaims(token).get("codcliente");
     }
 

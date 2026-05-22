@@ -12,9 +12,9 @@ import lombok.NoArgsConstructor;
 
 public class UserCredentials {
     private String ClienIdeClien;
-    private  String UsvcoIdeUsv;
+    private String UsvcoIdeUsv;
     private String UsvcoPswd;
-    private  String ipterminal;
+    private String ipterminal;
 
     public String getClienIdeClien() {
         return ClienIdeClien;

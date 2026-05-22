@@ -18,7 +18,7 @@
     <version>0.0.1-SNAPSHOT</version>
     <packaging>jar</packaging>
     <name>apiVirtualEmpresa</name>
-    <description>Virtual Empresas desarrollado por Ing.Oscar Moreira </description>
+    <description>Virtual Empresas desarrollado por Ing.Oscar Moreira</description>
 
     <properties>
         <java.version>23</java.version>
@@ -46,10 +46,7 @@
             <exclusions>
 
 
-
-
-                 <!-- NUEVO: Excluir autoconfiguracion de error -->
-
+                <!-- NUEVO: Excluir autoconfiguracion de error -->
 
 
             </exclusions>
@@ -256,19 +253,16 @@
         </dependency>
 
 
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security</artifactId>
+            <exclusions>
 
 
-          <dependency>
-          <groupId>org.springframework.boot</groupId>
-          <artifactId>spring-boot-starter-security</artifactId>
-          <exclusions>
+            </exclusions>
+        </dependency>
 
-
-
-          </exclusions>
-      </dependency>
-
-      <!-- Informix JDBC Driver -->
+        <!-- Informix JDBC Driver -->
         <dependency>
             <groupId>com.ibm.informix</groupId>
             <artifactId>jdbc</artifactId>

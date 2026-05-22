@@ -2,15 +2,15 @@ package apiVirtualEmpresa.apiVirtualEmpresa.FirmaSRi.Service;
 
 import apiVirtualEmpresa.apiVirtualEmpresa.FirmaSRi.dto.FirmaUtils;
 import jakarta.persistence.EntityManager;
-import org.springframework.beans.factory.annotation.Autowired;
-import java.sql.Date;
 import jakarta.persistence.Query;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import srijava.XAdESBESSignature;
+
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.time.LocalDate;
@@ -28,6 +28,7 @@ public class FirmaService {
     public FirmaService(JdbcTemplate jdbcTemplate) {
         this.jdbcTemplate = jdbcTemplate;
     }
+
     @Autowired
     private EntityManager entityManager;
 
@@ -90,6 +91,7 @@ public class FirmaService {
                     .body(response);
         }
     }
+
     public Map<String, Object> obtenerClavesAcceso(FirmaUtils dto) {
 
         String codOfici = FirmaUtils.leftPad(dto.getTxtcodofici(), 3);
@@ -99,16 +101,16 @@ public class FirmaService {
         String fechaHasta = FirmaUtils.fechaToDB(dto.getDtpfechasta());
 
         String sql = """
-            SELECT *
-            FROM ecerdcwb
-            WHERE rdcwb_cod_tcomp = ?
-              AND rdcwb_sec_estab = ?
-              AND rdcwb_cod_edcwb <> 2
-              AND rdcwb_cod_edcwb NOT IN (99)
-              AND rdcwb_fec_regis >= ?
-              AND rdcwb_fec_regis <= ?
-            ORDER BY rdcwb_sec_estab, rdcwb_sec_pemis, rdcwb_num_cmprt DESC
-        """;
+                    SELECT *
+                    FROM ecerdcwb
+                    WHERE rdcwb_cod_tcomp = ?
+                      AND rdcwb_sec_estab = ?
+                      AND rdcwb_cod_edcwb <> 2
+                      AND rdcwb_cod_edcwb NOT IN (99)
+                      AND rdcwb_fec_regis >= ?
+                      AND rdcwb_fec_regis <= ?
+                    ORDER BY rdcwb_sec_estab, rdcwb_sec_pemis, rdcwb_num_cmprt DESC
+                """;
 
         List<Map<String, Object>> data = jdbcTemplate.queryForList(
                 sql,
@@ -174,16 +176,17 @@ public class FirmaService {
             int ctrop = estado.equals("DEVUELTA") ? 4 : 1;
 
             jdbcTemplate.update("""
-            UPDATE ecerdcwb
-               SET rdcwb_cod_edcwb = ?,
-                   rdcwb_msj_rdcwb = ?
-             WHERE rdcwb_sec_estab = ?
-               AND rdcwb_sec_pemis = ?
-               AND rdcwb_num_cmprt = ?
-               AND rdcwb_cod_tcomp = ?
-        """, ctrop, mensaje, estab, pemis, sec, tipoComprobante);
+                        UPDATE ecerdcwb
+                           SET rdcwb_cod_edcwb = ?,
+                               rdcwb_msj_rdcwb = ?
+                         WHERE rdcwb_sec_estab = ?
+                           AND rdcwb_sec_pemis = ?
+                           AND rdcwb_num_cmprt = ?
+                           AND rdcwb_cod_tcomp = ?
+                    """, ctrop, mensaje, estab, pemis, sec, tipoComprobante);
         }
     }
+
     private void procesarNoAutorizados(String ruta, String tipoComprobante) throws Exception {
 
         List<String> lineas = Files.readAllLines(Paths.get(ruta));
@@ -203,16 +206,17 @@ public class FirmaService {
             int ctrop = estado.equals("NO AUTORIZADO") ? 3 : 1;
 
             jdbcTemplate.update("""
-            UPDATE ecerdcwb
-               SET rdcwb_cod_edcwb = ?,
-                   rdcwb_msj_rdcwb = ?
-             WHERE rdcwb_sec_estab = ?
-               AND rdcwb_sec_pemis = ?
-               AND rdcwb_num_cmprt = ?
-               AND rdcwb_cod_tcomp = ?
-        """, ctrop, mensaje, estab, pemis, sec, tipoComprobante);
+                        UPDATE ecerdcwb
+                           SET rdcwb_cod_edcwb = ?,
+                               rdcwb_msj_rdcwb = ?
+                         WHERE rdcwb_sec_estab = ?
+                           AND rdcwb_sec_pemis = ?
+                           AND rdcwb_num_cmprt = ?
+                           AND rdcwb_cod_tcomp = ?
+                    """, ctrop, mensaje, estab, pemis, sec, tipoComprobante);
         }
     }
+
     private void procesarAutorizados(String ruta, String tipoComprobante) throws Exception {
 
         List<String> lineas = Files.readAllLines(Paths.get(ruta));
@@ -232,30 +236,30 @@ public class FirmaService {
 
             String fechaAutorDB = FirmaUtils.fechaToDB(fecha);
             String fechaDoc = clave.substring(0, 8);
-            String[]  fecEmision = FirmaUtils.fechaBddXmlBdd(fechaDoc);
+            String[] fecEmision = FirmaUtils.fechaBddXmlBdd(fechaDoc);
 
             String estab = clave.substring(24, 27);
             String pemis = clave.substring(27, 30);
             String sec = clave.substring(30, 39);
 
             ;
-            String sriComprobante = descripcioncampo("ecetcomp","tcomp_cod_tcomp", tipoComprobante,"tcomp_cod_tcsri", "");
+            String sriComprobante = descripcioncampo("ecetcomp", "tcomp_cod_tcomp", tipoComprobante, "tcomp_cod_tcsri", "");
             int sriComp = Integer.parseInt(sriComprobante);
 
-               int ctrop = "AUTORIZADO".equals(estado) ? 2 : 1;
+            int ctrop = "AUTORIZADO".equals(estado) ? 2 : 1;
 
             jdbcTemplate.update("""
-            UPDATE ecerdcwb
-               SET rdcwb_cod_edcwb = ?,
-                   rdcwb_num_autor = ?,
-                   rdcwb_fec_autor = ?,
-                   rdcwb_clv_acces = ?,
-                   rdcwb_msj_rdcwb = ''
-             WHERE rdcwb_sec_estab = ?
-               AND rdcwb_sec_pemis = ?
-               AND rdcwb_num_cmprt = ?
-               AND rdcwb_cod_tcomp = ?
-         """, ctrop, numAutor, fechaHora, clave,
+                               UPDATE ecerdcwb
+                                  SET rdcwb_cod_edcwb = ?,
+                                      rdcwb_num_autor = ?,
+                                      rdcwb_fec_autor = ?,
+                                      rdcwb_clv_acces = ?,
+                                      rdcwb_msj_rdcwb = ''
+                                WHERE rdcwb_sec_estab = ?
+                                  AND rdcwb_sec_pemis = ?
+                                  AND rdcwb_num_cmprt = ?
+                                  AND rdcwb_cod_tcomp = ?
+                            """, ctrop, numAutor, fechaHora, clave,
                     estab, pemis, sec, tipoComprobante);
             if (sriComp == 1) {
                 jdbcTemplate.update(
@@ -278,7 +282,6 @@ public class FirmaService {
             }
 
 
-
         }
     }
 
@@ -291,7 +294,7 @@ public class FirmaService {
                 " WHERE " + codigo + " = ? " +
                 (where != null ? where : "");
 
-        List<String> resultados = jdbcTemplate.query(sql, new Object[]{valcod},  (rs, rowNum) -> rs.getString(nombre) );
+        List<String> resultados = jdbcTemplate.query(sql, new Object[]{valcod}, (rs, rowNum) -> rs.getString(nombre));
 
         return resultados.isEmpty()
                 ? "?"
@@ -304,8 +307,8 @@ public class FirmaService {
         Map<String, Object> response = new HashMap<>();
         // 1. Datos de entrada
 
-        String codigoEmpresa   = request.getTxtcodigoEmpresa();
-        String codigoOficina   = request.getTxtcodofici();
+        String codigoEmpresa = request.getTxtcodigoEmpresa();
+        String codigoOficina = request.getTxtcodofici();
         String tipoComprobante = request.getTxtcodedocu();
 
         LocalDate fechaDesde = LocalDate.parse(request.getDtpfecdesde(),

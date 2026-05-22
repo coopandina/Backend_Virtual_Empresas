@@ -5,7 +5,10 @@ import apiVirtualEmpresa.apiVirtualEmpresa.VerificarCuenta.dto.VerificarCuentaUt
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 
 import java.util.Map;
 
@@ -20,7 +23,7 @@ public class VerificarCuentaController {
     }
 
     @PostMapping("/verificar-cuenta")
-    public ResponseEntity<Map<String, Object>> verificarCuenta( HttpServletRequest request, Authentication authentication, @RequestBody VerificarCuentaUtils dto) {
-        return verificarCuentaService.VerificarRestriccionesCuenta(request,authentication, dto);
+    public ResponseEntity<Map<String, Object>> verificarCuenta(HttpServletRequest request, Authentication authentication, @RequestBody VerificarCuentaUtils dto) {
+        return verificarCuentaService.VerificarRestriccionesCuenta(request, authentication, dto);
     }
 }

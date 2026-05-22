@@ -1,7 +1,6 @@
 package apiVirtualEmpresa.apiVirtualEmpresa.login.controller;
 
 
-
 import apiVirtualEmpresa.apiVirtualEmpresa.login.dto.CodSegurdiad;
 import apiVirtualEmpresa.apiVirtualEmpresa.login.service.AuthService;
 import jakarta.servlet.http.HttpServletRequest;
@@ -23,13 +22,14 @@ import java.util.Map;
 public class VerifiController {
     @Autowired
     private AuthService authService;
+
     /**
      * Endpoint para verificar Token seguridad Login
      */
     @PostMapping(value = "/codigo_seguridad")
     public ResponseEntity<Map<String, Object>> valCodiSeguridad(Authentication authentication, HttpServletRequest request, @RequestBody CodSegurdiad codSeguridad) {
         //System.out.println("hola beeeeeeeeebeeeeeeeeeeeeeeeeee "+authentication.isAuthenticated());
-        return authService.validarCodSeguridad(request, codSeguridad,authentication);
+        return authService.validarCodSeguridad(request, codSeguridad, authentication);
     }
 
     /**
