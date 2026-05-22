@@ -1,11 +1,11 @@
 package apiVirtualEmpresa.apiVirtualEmpresa.TransferenciasInter.Service;
-import apiVirtualEmpresa.apiVirtualEmpresa.login.service.TokenExpirationService;
+
 import apiVirtualEmpresa.apiVirtualEmpresa.TransferenciasInter.dto.TransfInterUtils;
 import apiVirtualEmpresa.apiVirtualEmpresa.config.JwtUtil;
 import apiVirtualEmpresa.apiVirtualEmpresa.config.Obtenertoken;
-import sms.SendSMS;
-import envioCorreo.sendEmail;
+import apiVirtualEmpresa.apiVirtualEmpresa.login.service.TokenExpirationService;
 import apiVirtualEmpresas.virtualempresas.libs.Libs;
+import envioCorreo.sendEmail;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import jakarta.persistence.Query;
@@ -20,9 +20,12 @@ import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.TransactionStatus;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.DefaultTransactionDefinition;
+import sms.SendSMS;
+
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.*;
+
 @Service
 @Transactional
 
@@ -47,7 +50,7 @@ public class TransfInterService {
 
     // LISTA DE CUENTAS TRANSFERIBLES
 
-    public ResponseEntity<Map<String, Object>> lisCtaTransferibles(HttpServletRequest request,Authentication authentication) {
+    public ResponseEntity<Map<String, Object>> lisCtaTransferibles(HttpServletRequest request, Authentication authentication) {
 
         Map<String, Object> response = new HashMap<>();
         List<Map<String, Object>> allDataList = new ArrayList<>();
@@ -157,7 +160,7 @@ public class TransfInterService {
                 cuenta.put("descrCta", row[2].toString().trim());
                 cuenta.put("estadCta", row[3].toString().trim());
                 cuenta.put("nombre", row[4].toString().trim());
-                cuenta.put("apellido",  row[5].toString().trim());
+                cuenta.put("apellido", row[5].toString().trim());
                 double saldo = row[6] != null ? Double.parseDouble(row[6].toString()) : 0.0;
                 cuenta.put("saldoCta", saldo);
                 allDataList.add(cuenta);
@@ -186,7 +189,7 @@ public class TransfInterService {
 
     public ResponseEntity<Map<String, Object>> listarInstFinancieras(HttpServletRequest request, Authentication authentication) {
         Map<String, Object> response = new HashMap<>();
-        Map<String,Object>allData = new HashMap<>();
+        Map<String, Object> allData = new HashMap<>();
         try {
 
             String token = Obtenertoken.desdeCookie(request);
@@ -197,7 +200,7 @@ public class TransfInterService {
 
 
             if (cliacUsuVirtu == null || clienIdenti == null || numSocio == null) {
-                List<Map<String, Object>> allDataList =  new ArrayList<>();
+                List<Map<String, Object>> allDataList = new ArrayList<>();
                 allData.put("message", "Datos del token incompletos");
                 allData.put("status", "ERRORTRFINTER001");
                 allData.put("errors", "ERROR EN LA AUTENTICACIÓN");
@@ -246,8 +249,8 @@ public class TransfInterService {
 
             String token = Obtenertoken.desdeCookie(request);
 
-            String  rucUsuVirtu  = authentication.getName();
-            String  clienIdenti = jwtUtil.getrucIdenClie(token);
+            String rucUsuVirtu = authentication.getName();
+            String clienIdenti = jwtUtil.getrucIdenClie(token);
             String numSocio = jwtUtil.getcodcliente(token);
 
             Map<String, Object> response = new HashMap<>();
@@ -256,7 +259,7 @@ public class TransfInterService {
 
             // Validación de datos del token
             if (rucUsuVirtu == null || clienIdenti == null || numSocio == null) {
-                response.put("message", "Datos del token incompletos "+rucUsuVirtu+" : "+clienIdenti);
+                response.put("message", "Datos del token incompletos " + rucUsuVirtu + " : " + clienIdenti);
                 response.put("status", "AA1767");
                 response.put("error", "ERROR EN LA AUTENTICACIÓN");
                 return new ResponseEntity<>(response, HttpStatus.UNAUTHORIZED);
@@ -264,13 +267,13 @@ public class TransfInterService {
 
             // Validación de cuenta origen
             if (numeroCuentaEnvio == null || !numeroCuentaEnvio.matches("\\d{12}")) {
-                response.put("message", "El número de cuenta origen debe tener exactamente 12 dígitos numéricos."+numeroCuentaEnvio);
+                response.put("message", "El número de cuenta origen debe tener exactamente 12 dígitos numéricos." + numeroCuentaEnvio);
                 response.put("status", "ERROR3032");
                 return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
             }
 
             if (numeroCtaDestino == null || !numeroCtaDestino.matches("\\d+")) {
-                response.put("message", "El número de cuenta destino solo debe contener caracteres numéricos."+numeroCtaDestino);
+                response.put("message", "El número de cuenta destino solo debe contener caracteres numéricos." + numeroCtaDestino);
                 response.put("status", "ERROR1492");
                 return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
             }
@@ -296,7 +299,6 @@ public class TransfInterService {
             List<Object[]> results = query.getResultList();
 
 
-
             // Procesar resultados cuenta origen
             if (results.isEmpty()) {
                 response.put("message", "Cuenta origen no encontrada o inválida");
@@ -316,11 +318,10 @@ public class TransfInterService {
             //generar codigo
             String CodigoTrfDirectas = codigoAleatorio6Temp();
             SendSMS smsDesbloqueo = new SendSMS();
-            smsDesbloqueo.sendSecurityCodeSMS(tlfCtaEnvio,"1150",CodigoTrfDirectas,"efectuar la Transferencia interbancaria", fecha);
+            smsDesbloqueo.sendSecurityCodeSMS(tlfCtaEnvio, "1150", CodigoTrfDirectas, "efectuar la Transferencia interbancaria", fecha);
             // Enviar correo
             sendEmail enviarCorreo = new sendEmail();
             enviarCorreo.sendEmailTokenTemp(apellCtaEnvio, nombreCtaEnvio, fecha, emailCtaEnvio, CodigoTrfDirectas);
-
 
 
             String sqlBloqUser = "UPDATE vircodaccess SET codaccess_estado = '0' WHERE codaccess_cedula = :rudIdenClie AND codaccess_usuario = :ideClieUsu AND codaccess_estado = '1' AND codsms_codigo = 10";
@@ -330,9 +331,9 @@ public class TransfInterService {
             resultBloqUser.executeUpdate();
 
             // Insertar nuevo código temporal
-            String sqlInsertAccesos ="INSERT INTO vircodaccess "
-                            + "(codaccess_cedula, codaccess_usuario, codaccess_codigo_temporal, codsms_codigo, codaccess_estado, codaccess_fecha) "
-                            + "VALUES (:codaccess_cedula, :codaccess_usuario, :codaccess_codigo_temporal, :codsms_codigo, :codaccess_estado, :codaccess_fecha)";
+            String sqlInsertAccesos = "INSERT INTO vircodaccess "
+                    + "(codaccess_cedula, codaccess_usuario, codaccess_codigo_temporal, codsms_codigo, codaccess_estado, codaccess_fecha) "
+                    + "VALUES (:codaccess_cedula, :codaccess_usuario, :codaccess_codigo_temporal, :codsms_codigo, :codaccess_estado, :codaccess_fecha)";
 
             Query resultInsertAcceso = entityManager.createNativeQuery(sqlInsertAccesos);
             resultInsertAcceso.setParameter("codaccess_cedula", clienIdenti);
@@ -343,7 +344,7 @@ public class TransfInterService {
             resultInsertAcceso.setParameter("codaccess_fecha", fecha);
             resultInsertAcceso.executeUpdate();
             tokenExpirationService.programarExpiracionToken(clienIdenti, CodigoTrfDirectas, "10");
-            response.put("message", "CODIGO GENERADO CON EXITO " );
+            response.put("message", "CODIGO GENERADO CON EXITO ");
             response.put("status", "CODTRFOK005");
             return new ResponseEntity<>(response, HttpStatus.OK);
 
@@ -369,7 +370,6 @@ public class TransfInterService {
             String rucUsuVirtu = authentication.getName();
             String clienIdenti = jwtUtil.getrucIdenClie(token);
             String numSocio = jwtUtil.getcodcliente(token);
-
 
 
             Map<String, Object> response = new HashMap<>();
@@ -563,13 +563,13 @@ public class TransfInterService {
             }
             double valorsumado = Math.round((0.36 + valTransferencia) * 100.0) / 100.0;
 
-            if (saldoDispoParse >= valorsumado){
+            if (saldoDispoParse >= valorsumado) {
                 String sqlQuery = """
-                SELECT ctadp_cod_empre, ctadp_cod_ofici, clien_ape_clien, clien_nom_clien, ctadp_cod_clien, clien_ide_clien 
-                FROM cnxctadp, cnxclien 
-                WHERE ctadp_cod_ctadp = :ctadp_cod_ctadp AND ctadp_cod_clien = :ctadp_cod_clien 
-                AND ctadp_cod_ectad = '1' 
-                AND ctadp_cod_clien = clien_cod_clien
+                        SELECT ctadp_cod_empre, ctadp_cod_ofici, clien_ape_clien, clien_nom_clien, ctadp_cod_clien, clien_ide_clien 
+                        FROM cnxctadp, cnxclien 
+                        WHERE ctadp_cod_ctadp = :ctadp_cod_ctadp AND ctadp_cod_clien = :ctadp_cod_clien 
+                        AND ctadp_cod_ectad = '1' 
+                        AND ctadp_cod_clien = clien_cod_clien
                         """;
 
                 // Consulta cuenta origen
@@ -597,8 +597,7 @@ public class TransfInterService {
                 String clieNomEnvio = resultEnvio[3].toString().trim();
                 String clienCodEnvio = resultEnvio[4].toString().trim();
                 String clinIdenEnvio = resultEnvio[5].toString().trim();
-                String nomApellido = clienApellEnvio +" " +clieNomEnvio;
-
+                String nomApellido = clienApellEnvio + " " + clieNomEnvio;
 
 
                 String callTransferProcedure = "CALL cnxprc_reg_spi01_wb(:clienCodEmpreEnvio, :clienCodOficiEnvio,'803',:clienCodEmpreEnvio," +
@@ -610,16 +609,16 @@ public class TransfInterService {
 
                 queryProcedure.setParameter("clienCodEmpreEnvio", clieCodEmpresaEnvio);
                 queryProcedure.setParameter("clienCodOficiEnvio", clienCodOficiEnvio);
-                queryProcedure.setParameter("clienCodEnvio",clienCodEnvio);
+                queryProcedure.setParameter("clienCodEnvio", clienCodEnvio);
                 queryProcedure.setParameter("clinIdenEnvio", clinIdenEnvio);
                 queryProcedure.setParameter("nomApellido", nomApellido);
                 queryProcedure.setParameter("numeroCuentaEnvio", numeroCuentaEnvio);
                 queryProcedure.setParameter("valTransferencia", valTransferencia);
-                queryProcedure.setParameter("cedulaCtaRecibe",cedulaCtaRecibe);
-                queryProcedure.setParameter("titulaCtaRecibe",titulaCtaRecibe);
-                queryProcedure.setParameter("clieIdBancoRecibe",clieIdBancoRecibe);
-                queryProcedure.setParameter("numeroCtaDestino",numeroCtaDestino);
-                queryProcedure.setParameter("tipoctabce",tipoctabce);
+                queryProcedure.setParameter("cedulaCtaRecibe", cedulaCtaRecibe);
+                queryProcedure.setParameter("titulaCtaRecibe", titulaCtaRecibe);
+                queryProcedure.setParameter("clieIdBancoRecibe", clieIdBancoRecibe);
+                queryProcedure.setParameter("numeroCtaDestino", numeroCtaDestino);
+                queryProcedure.setParameter("tipoctabce", tipoctabce);
                 Object result = queryProcedure.getSingleResult();
                 int returnValue = Integer.parseInt(result.toString());
                 double valComision = 0.36;
@@ -674,7 +673,7 @@ public class TransfInterService {
                 } else {
                     return grabar2Response;
                 }
-            }else{
+            } else {
                 transactionManager.rollback(status);
                 response.put("message", "MONTO INSUFICIENTE PARA REALIZAR LA TRANSFERENCIA ");
                 response.put("error", "ERROR105");
@@ -853,9 +852,9 @@ public class TransfInterService {
             String fechaFor = fecha_n.obtenerFecha();
 
             String rfcta_num_guias = "";
-            String rfcta_fec_emisi =  "TODAY";
+            String rfcta_fec_emisi = "TODAY";
 
-            String rfcta_num_compr=null;
+            String rfcta_num_compr = null;
 
 
             // Formatear guía de remisión si existe
@@ -989,8 +988,8 @@ public class TransfInterService {
             Integer rfcta_cod_efctr = 1;
             Integer modo = 1;
 
-            if (rfcta_cod_efctr.equals(1)){
-                if(modo.equals(1)){
+            if (rfcta_cod_efctr.equals(1)) {
+                if (modo.equals(1)) {
                     String callGeneraNroComprobante1 = "CALL generaNroComprobante2(:codigoEmpresa, :codigoOficina, :tipoComprobante, :numTrans)";
                     Query queryGeneraNroComprobante1 = entityManager.createNativeQuery(callGeneraNroComprobante1);
                     queryGeneraNroComprobante1.setParameter("codigoEmpresa", codigoEmpresa);
@@ -1011,7 +1010,7 @@ public class TransfInterService {
                     queryRegistraDocumentoWeb.setParameter("nsecuencia", nsecuencia1);
                     queryRegistraDocumentoWeb.setParameter("tipoComprobante", 1);
                     queryRegistraDocumentoWeb.setParameter("servicio", servicio);
-                    queryRegistraDocumentoWeb.setParameter("fecharegistro",fechaFor);
+                    queryRegistraDocumentoWeb.setParameter("fecharegistro", fechaFor);
                     String resultado = (String) queryRegistraDocumentoWeb.getSingleResult();
                     System.out.println("Resultado del procedimiento: " + resultado);
 
@@ -1067,6 +1066,7 @@ public class TransfInterService {
     private String eliminarAcentos(String input) {
         return input.replaceAll("[^\\p{ASCII}]", "");
     }
+
     private float redondearMoneda(float valor) {
         return (float) (Math.floor(valor * 100 + 0.5) / 100);
     }
