@@ -1921,8 +1921,11 @@ public class NominasService {
                 String saldoDisponible = obtenerSaldoDisponible(numeroCuentaEnvio);
                 BigDecimal saldoDispoParse = new BigDecimal(saldoDisponible);
 
-                BigDecimal comision = new BigDecimal("0.36");
-                BigDecimal valorsumado = valTransferencia.add(comision).setScale(2, RoundingMode.HALF_UP);
+                // Comisión interbancaria: tarifa base + 15% IVA (centralizado)
+                final double COMISION_BASE = 0.36;
+                final double IVA_PORCENTAJE = 0.15;
+                BigDecimal comisionConIva = BigDecimal.valueOf(Math.round(COMISION_BASE * (1 + IVA_PORCENTAJE) * 100.0) / 100.0); // = 0.41
+                BigDecimal valorsumado = valTransferencia.add(comisionConIva).setScale(2, RoundingMode.HALF_UP);
 
                 if (saldoDispoParse.compareTo(valorsumado) < 0) {
                     response.put("message", "MONTO INSUFICIENTE PARA REALIZAR LA TRANSFERENCIA ");
@@ -1990,7 +1993,7 @@ public class NominasService {
                                 ":numeroCtaDestino," +
                                 ":tipoctabce," +
                                 "'TRANSFERENCIAS INTERBANCARIAS EN LINEA'," +
-                                "1,'0.36')";
+                                "1,'0.41')";
 
                 Query queryProcedure = entityManager.createNativeQuery(callTransferProcedure);
 
@@ -2356,7 +2359,9 @@ public class NominasService {
                 destfpag = resultFormaPago.get(0); // Accedemos directamente al String
             }
 
-            double valtfpag = totalFactura;
+            // valtfpag siempre debe ser comisionConIva (0.41): COMISION_BASE * (1 + IVA_PORCENTAJE)
+            // totalFactura puede ser 0.36 cuando el cliente es socio (iva=1 → 0% en BD), por eso se calcula explícito
+            double valtfpag = Math.round(valunida * cantidad * (1 + 0.15) * 100.0) / 100.0;
             Integer numregisdpfct = 1;
             String sqlInsertPago = "INSERT INTO ecedpfct (dpfct_sec_estab, dpfct_sec_pemis, dpfct_num_rfcta, dpfct_fec_emisi, " +
                     "dpfct_num_regis, dpfct_cod_tfpag, dpfct_des_tfpag, dpfct_val_total, dpfct_abr_tmpfp, dpfct_num_tmpfp) " +
