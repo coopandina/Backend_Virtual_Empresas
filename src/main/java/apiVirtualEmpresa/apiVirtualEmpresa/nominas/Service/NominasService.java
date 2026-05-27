@@ -1075,8 +1075,8 @@ public class NominasService {
                 }
 
 
-                String sqlInsertPlina =
-                        "INSERT INTO andplina_fercho_prueba (" +
+               String sqlInsertPlina =
+                        "INSERT INTO andplina (" +
                                 "plina_cod_empre, plina_cod_ofici, plina_cod_cajas, plina_des_plina, " +
                                 "plina_cod_ctaor, plina_cod_ctade, plina_val_trans, plina_usu_carga, " +
                                 "plina_fec_carga, plina_usu_aprob, plina_fec_aprob, plina_num_plina, " +
