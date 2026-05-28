@@ -2119,10 +2119,20 @@ public class NominasService {
             querySocioCliente.setParameter("cedula", cedula);
             List<?> rsSocioCliente = querySocioCliente.getResultList();
 
-            int codfprod = 15; // COMISIONES SERVICIOS CON IVA si no es socio
-            int iva = 2;
+            String sqlCobrarIva = "SELECT profi_val_enter FROM cnxprofi WHERE profi_cod_profi = 'ctrlcbrivasocio' AND profi_cod_ofici = :codigoOficina";
+            Query queryCobrarIva = entityManager.createNativeQuery(sqlCobrarIva);
+            queryCobrarIva.setParameter("codigoOficina", codigoOficina);
+            List<?> rsCobrarIva = queryCobrarIva.getResultList();
+            // toma el valor de la consulta 1 = si cobra, 0 = no cobra
+            int cobrarIva = 1;
+            if (!rsCobrarIva.isEmpty() && rsCobrarIva.get(0) != null) {
+                cobrarIva = Integer.parseInt(rsCobrarIva.get(0).toString());
+            }
 
-            if (!rsSocioCliente.isEmpty()) {
+            int codfprod = 15; // COMISIONES SERVICIOS CON IVA si no es socio
+            int iva = 6;
+
+            if (!rsSocioCliente.isEmpty() && cobrarIva == 0) {
                 codfprod = 16; // COMISIONES SERVICIOS SIN IVA si es socio
                 iva = 1;
             }
