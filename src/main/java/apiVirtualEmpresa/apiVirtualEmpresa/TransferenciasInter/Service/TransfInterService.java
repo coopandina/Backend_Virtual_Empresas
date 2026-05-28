@@ -561,11 +561,7 @@ public class TransfInterService {
                     return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
                 }
             }
-            // Comisión interbancaria: tarifa base + 15% IVA (centralizado)
-            final double COMISION_BASE = 0.36;
-            final double IVA_PORCENTAJE = 0.15;
-            double comisionConIva = Math.round(COMISION_BASE * (1 + IVA_PORCENTAJE) * 100.0) / 100.0; // = 0.41
-            double valorsumado = Math.round((comisionConIva + valTransferencia) * 100.0) / 100.0;
+            double valorsumado = Math.round((0.36 + valTransferencia) * 100.0) / 100.0;
 
             if (saldoDispoParse >= valorsumado) {
                 String sqlQuery = """
@@ -608,7 +604,7 @@ public class TransfInterService {
                         ":clienCodOficiEnvio,:clienCodEnvio," +
                         ":clinIdenEnvio, :nomApellido,:numeroCuentaEnvio,:valTransferencia," +
                         ":cedulaCtaRecibe,:titulaCtaRecibe," +
-                        ":clieIdBancoRecibe,:numeroCtaDestino,:tipoctabce,'TRANSFERENCIAS INTERBANCARIAS EN LINEA',1,'0.41')";
+                        ":clieIdBancoRecibe,:numeroCtaDestino,:tipoctabce,'TRANSFERENCIAS INTERBANCARIAS EN LINEA',1,'0.36')";
                 Query queryProcedure = entityManager.createNativeQuery(callTransferProcedure);
 
                 queryProcedure.setParameter("clienCodEmpreEnvio", clieCodEmpresaEnvio);
@@ -625,7 +621,7 @@ public class TransfInterService {
                 queryProcedure.setParameter("tipoctabce", tipoctabce);
                 Object result = queryProcedure.getSingleResult();
                 int returnValue = Integer.parseInt(result.toString());
-                double valComision = COMISION_BASE; // base sin IVA: grabar2 calcula el IVA internamente
+                double valComision = 0.36;
                 ResponseEntity<Map<String, Object>> grabar2Response = grabar2(
                         clieCodEmpresaEnvio,
                         clienCodOficiEnvio,
@@ -971,9 +967,7 @@ public class TransfInterService {
                 destfpag = resultFormaPago.get(0); // Accedemos directamente al String
             }
 
-            // valtfpag siempre debe ser comisionConIva (0.41): COMISION_BASE * (1 + IVA_PORCENTAJE)
-            // totalFactura puede ser 0.36 cuando el cliente es socio (iva=1 → 0% en BD), por eso se calcula explícito
-            double valtfpag = Math.round(valunida * cantidad * (1 + 0.15) * 100.0) / 100.0;
+            double valtfpag = totalFactura;
             Integer numregisdpfct = 1;
             String sqlInsertPago = "INSERT INTO ecedpfct (dpfct_sec_estab, dpfct_sec_pemis, dpfct_num_rfcta, dpfct_fec_emisi, " +
                     "dpfct_num_regis, dpfct_cod_tfpag, dpfct_des_tfpag, dpfct_val_total, dpfct_abr_tmpfp, dpfct_num_tmpfp) " +
