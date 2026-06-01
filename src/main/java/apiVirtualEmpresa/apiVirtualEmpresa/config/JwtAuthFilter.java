@@ -19,6 +19,12 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
     private final JwtUtil jwtUtil;
 
+    @jakarta.persistence.PersistenceContext
+    private jakarta.persistence.EntityManager entityManager;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    private org.springframework.transaction.PlatformTransactionManager transactionManager;
+
     public JwtAuthFilter(JwtUtil jwtUtil) {
         this.jwtUtil = jwtUtil;
     }
@@ -40,7 +46,55 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         String token = getJwtFromCookie(request);
 
         if (token != null && jwtUtil.validateToken(token)) {
+            // [kguanoluisa] - Control de Concurrencia: Verificar si la sesión del token sigue activa en Base de Datos - 12/05/2026
+            String sessionId = jwtUtil.getSessionIdFromToken(token);
+            String ruc = jwtUtil.getrucIdenClie(token);
             String username = jwtUtil.getUsernameFromToken(token);
+
+            if (sessionId != null
+                    && !path.startsWith("/api/auth/")
+                    && !path.startsWith("/api/firma-sri/")
+                    && !path.equals("/api/verificar/codigo_seguridad")
+                    && !path.equals("/api/verificar/terminos-condiciones")
+                    && !path.equals("/api/password/firmar")) {
+
+                try {
+                    String sqlCheck = "SELECT COUNT(*) FROM andctrlvirlogin " +
+                            "WHERE ctrlvirlogin_ide_virtual = :ruc " +
+                            "AND ctrlvirlogin_user_virtual = :user " +
+                            "AND ctrlvirlogin_cod_temporal = :uuid " +
+                            "AND ctrlvirlogin_ctrl_virtual = 1";
+                    jakarta.persistence.Query qCheck = entityManager.createNativeQuery(sqlCheck);
+                    qCheck.setParameter("ruc", ruc);
+                    qCheck.setParameter("user", username);
+                    qCheck.setParameter("uuid", sessionId);
+
+                    Number count = (Number) qCheck.getSingleResult();
+
+                    if (count.intValue() == 0) {
+                        // Sesión inactiva, bloqueada o expirada por concurrencia
+                        response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                        response.setContentType("application/json;charset=UTF-8");
+                        response.getWriter().write("{\"errors\": \"Sesión inactiva o abierta en otro dispositivo.\", \"status\": \"AASESIONACTIVA\"}");
+                        return;
+                    }
+
+                    // Registrar Latido de Actividad (Heartbeat)
+                    org.springframework.transaction.support.TransactionTemplate tt =
+                            new org.springframework.transaction.support.TransactionTemplate(transactionManager);
+                    tt.execute(status -> {
+                        String sqlHeartbeat = "UPDATE andctrlvirlogin SET ctrlvirlogin_fecha_virtual = CURRENT " +
+                                "WHERE ctrlvirlogin_cod_temporal = :uuid";
+                        jakarta.persistence.Query qHeart = entityManager.createNativeQuery(sqlHeartbeat);
+                        qHeart.setParameter("uuid", sessionId);
+                        qHeart.executeUpdate();
+                        return null;
+                    });
+
+                } catch (Exception ex) {
+                    // Si falla la consulta a la tabla de control, dejamos continuar la petición por estabilidad
+                }
+            }
 
             UsernamePasswordAuthenticationToken authentication =
                     new UsernamePasswordAuthenticationToken(username, null, new ArrayList<>());

@@ -24,13 +24,26 @@ public class JwtUtil {
         return Keys.hmacShaKeyFor(secret.getBytes());
     }
 
-    public String generateToken(String username,String rucIdenClie,String codcliente) {
+    public String generateToken(String username, String rucIdenClie, String codcliente) {
         return Jwts.builder()
                 .setSubject(username)
                 .claim("rucIdenClie", rucIdenClie)
                 .claim("codcliente", codcliente)
                 .setIssuedAt(new Date())
 
+                .setExpiration(new Date(System.currentTimeMillis() + expiration))
+                .signWith(getSigningKey(), SignatureAlgorithm.HS256)
+                .compact();
+    }
+
+    // [kguanoluisa] - Sobrecarga para incluir sessionId en el Token para control de concurrencia - 12/05/2026
+    public String generateToken(String username, String rucIdenClie, String codcliente, String sessionId) {
+        return Jwts.builder()
+                .setSubject(username)
+                .claim("rucIdenClie", rucIdenClie)
+                .claim("codcliente", codcliente)
+                .claim("sessionId", sessionId)
+                .setIssuedAt(new Date())
                 .setExpiration(new Date(System.currentTimeMillis() + expiration))
                 .signWith(getSigningKey(), SignatureAlgorithm.HS256)
                 .compact();
@@ -64,7 +77,17 @@ public class JwtUtil {
     public String getrucIdenClie(String token) {
         return (String) getClaims(token).get("rucIdenClie");
     }
-    public String  getcodcliente(String token) {
+
+    public String getcodcliente(String token) {
         return (String) getClaims(token).get("codcliente");
+    }
+
+    // [kguanoluisa] - Obtener sessionId del token - 12/05/2026
+    public String getSessionIdFromToken(String token) {
+        try {
+            return (String) getClaims(token).get("sessionId");
+        } catch (Exception e) {
+            return null;
+        }
     }
 }

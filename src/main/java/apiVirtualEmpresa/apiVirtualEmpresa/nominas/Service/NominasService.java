@@ -1,11 +1,11 @@
 package apiVirtualEmpresa.apiVirtualEmpresa.nominas.Service;
-import apiVirtualEmpresa.apiVirtualEmpresa.login.service.TokenExpirationService;
-import apiVirtualEmpresa.apiVirtualEmpresa.config.Obtenertoken;
-import sms.SendSMS;
-import envioCorreo.sendEmail;
-import apiVirtualEmpresas.virtualempresas.libs.Libs;
+
 import apiVirtualEmpresa.apiVirtualEmpresa.config.JwtUtil;
+import apiVirtualEmpresa.apiVirtualEmpresa.config.Obtenertoken;
+import apiVirtualEmpresa.apiVirtualEmpresa.login.service.TokenExpirationService;
 import apiVirtualEmpresa.apiVirtualEmpresa.nominas.dto.NominasUtils;
+import apiVirtualEmpresas.virtualempresas.libs.Libs;
+import envioCorreo.sendEmail;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import jakarta.persistence.Query;
@@ -20,10 +20,13 @@ import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.TransactionStatus;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.DefaultTransactionDefinition;
+import sms.SendSMS;
+
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.*;
+
 @Transactional
 @Service
 public class NominasService {
@@ -36,6 +39,7 @@ public class NominasService {
     public NominasService(JwtUtil jwtUtil) {
         this.jwtUtil = jwtUtil;
     }
+
     @Autowired
     private TokenExpirationService tokenExpirationService;
 
@@ -149,6 +153,7 @@ public class NominasService {
             return new ResponseEntity<>(response, HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
+
     public ResponseEntity<Map<String, Object>> numNomina(HttpServletRequest request, Authentication authentication, NominasUtils requestData) {
 
         Map<String, Object> response = new HashMap<>();
@@ -157,7 +162,7 @@ public class NominasService {
         try {
             String token = Obtenertoken.desdeCookie(request);
             String cliacUsuRuc = jwtUtil.getrucIdenClie(token);
-            String numSocio    = jwtUtil.getcodcliente(token);
+            String numSocio = jwtUtil.getcodcliente(token);
 
             if (token == null) {
                 Map<String, Object> err = new HashMap<>();
@@ -188,7 +193,7 @@ public class NominasService {
             }
 
 
-            String valservi  = requestData.getValservi();
+            String valservi = requestData.getValservi();
             String tipestado = requestData.getTipestado();
             String ctaOrigen = requestData.getCtaOrigen();
 
@@ -204,36 +209,35 @@ public class NominasService {
 
             String sql;
 
+            //kguanoluisa, [Se modifico query numNomina valservi=2 para incluir cnxifina y se quitaron filtros codifina. En valservi=1 se igualo a 3 columnas. Se mapean cod_banco y nom_banco en JSON][numnomina, ifina_nom_ifina, plexa_cod_ifina][22/05/2026]
             if (valservi.equals("2")) {
                 sql = """
-                SELECT DISTINCT plexa_num_plnex AS numnomina
-                FROM andplexa
-                WHERE plexa_ide_clien = :txtideclien
-                  AND plexa_cod_ifina = :codifina
-                  AND plexa_ctr_trans = :tipestad
-                  AND plexa_cod_ctaor = :codctadp
-            """;
+                            SELECT DISTINCT plexa_num_plnex AS numnomina, ifi.ifina_nom_ifina, plexa_cod_ifina
+                            FROM andplexa
+                            JOIN cnxifina ifi ON ifi.ifina_cod_ifina = plexa_cod_ifina
+                            WHERE plexa_ide_clien = :txtideclien
+                              AND plexa_ctr_trans = :tipestad
+                              AND plexa_cod_ctaor = :codctadp
+                        """;
             } else {
                 sql = """
-                SELECT DISTINCT plina_num_plina AS numnomina
-                FROM andplina
-                WHERE plina_cod_ctaor = :codctadp
-                  AND plina_ctr_trans = :tipestad
-            """;
+                            SELECT DISTINCT plina_num_plina AS numnomina, 'INTERNA' AS ifina_nom_ifina, 0 AS plexa_cod_ifina
+                            FROM andplina
+                            WHERE plina_cod_ctaor = :codctadp
+                              AND plina_ctr_trans = :tipestad
+                        """;
             }
             Query query = entityManager.createNativeQuery(sql);
             query.setParameter("tipestad", tipestado.equals("3") ? "0" : tipestado);
 
             if (valservi.equals("2")) {
-                String codbanco =  requestData.getCodbanco();
-                query.setParameter("codifina", codbanco);
                 query.setParameter("txtideclien", cliacUsuRuc);
                 query.setParameter("codctadp", ctaOrigen);
             } else {
                 query.setParameter("codctadp", ctaOrigen);
             }
 
-            List<Object> results = query.getResultList();
+            List<Object[]> results = query.getResultList();
 
             if (results.isEmpty()) {
                 Map<String, Object> err = new HashMap<>();
@@ -246,13 +250,18 @@ public class NominasService {
 
             int i = 1;
 
-            for (Object row : results) {
+            for (Object[] row : results) {
 
                 Map<String, Object> datos = new HashMap<>();
 
                 datos.put("registros", i++);
-                datos.put("codnomina", row.toString().trim());
-                datos.put("desnomina", row.toString().trim());
+                datos.put("codnomina", row[0] != null ? row[0].toString().trim() : "");
+                datos.put("desnomina", row[0] != null ? row[0].toString().trim() : "");
+
+                if (valservi.equals("2")) {
+                    datos.put("nom_banco", row[1] != null ? row[1].toString().trim() : "");
+                    datos.put("cod_banco", row[2] != null ? row[2].toString().trim() : "");
+                }
 
                 allDataList.add(datos);
             }
@@ -286,8 +295,8 @@ public class NominasService {
 
             String token = Obtenertoken.desdeCookie(request);
             String cliacUsuVirtu = authentication.getName();
-            String clienIdenti   = jwtUtil.getrucIdenClie(token);
-            String numSocio      = jwtUtil.getcodcliente(token);
+            String clienIdenti = jwtUtil.getrucIdenClie(token);
+            String numSocio = jwtUtil.getcodcliente(token);
 
             if (cliacUsuVirtu == null || numSocio == null || clienIdenti == null) {
                 Map<String, Object> err = new HashMap<>();
@@ -297,7 +306,6 @@ public class NominasService {
                 response.put("AllData", allDataList);
                 return new ResponseEntity<>(response, HttpStatus.UNAUTHORIZED);
             }
-
 
 
             if (token == null) {
@@ -321,9 +329,9 @@ public class NominasService {
             String estado = "1";
             String ctadp = requestData.getCtadp();
             String numnomina = requestData.getNumnomina();
-            String valservi  = requestData.getValservi();
+            String valservi = requestData.getValservi();
 
-            if (estado == null || numnomina == null ) {
+            if (estado == null || numnomina == null) {
                 Map<String, Object> err = new HashMap<>();
                 err.put("status", "AA022");
                 err.put("errors", "Datos incompletos: estado, numnomina y ctaor son obligatorios.");
@@ -333,14 +341,14 @@ public class NominasService {
             }
 
             if (valservi.equals("2")) {
-                String  codbanco   = requestData.getCodbanco();
+                String codbanco = requestData.getCodbanco();
 
                 String sql;
-                    sql = """
-                  SELECT plexa_ide_desti, plexa_nom_desti, plexa_cod_ctade, plexa_val_trans, plexa_cod_plexa, plexa_des_plexa
-                  FROM andplexa WHERE plexa_ide_clien = :ideclien AND plexa_cod_ifina = :cntbnco AND plexa_num_plnex = :numnomina
-                  AND plexa_ctr_trans = :estado 
-                     """;
+                sql = """
+                        SELECT plexa_ide_desti, plexa_nom_desti, plexa_cod_ctade, plexa_val_trans, plexa_cod_plexa, plexa_des_plexa
+                        FROM andplexa WHERE plexa_ide_clien = :ideclien AND plexa_cod_ifina = :cntbnco AND plexa_num_plnex = :numnomina
+                        AND plexa_ctr_trans = :estado 
+                        """;
 
 
                 Query query = entityManager.createNativeQuery(sql);
@@ -355,7 +363,7 @@ public class NominasService {
                 if (results.isEmpty()) {
                     Map<String, Object> err = new HashMap<>();
                     err.put("status", "NOMINA404");
-                    err.put("errors", "No existen registros de nómina para los filtros enviados." + clienIdenti + ":" +codbanco + ":" +numnomina + ":"+ estado  );
+                    err.put("errors", "No existen registros de nómina para los filtros enviados." + clienIdenti + ":" + codbanco + ":" + numnomina + ":" + estado);
                     response.put("success", false);
                     response.put("AllData", List.of(err));
                     return new ResponseEntity<>(response, HttpStatus.OK);
@@ -391,65 +399,65 @@ public class NominasService {
             } else {
 
 
-            String sql;
-                            sql = """
-                    SELECT plina_cod_ctade, plina_val_trans, plina_ctr_trans,plina_fec_carga,ct.ctadp_cod_clien,trim(cl.clien_ape_clien) || ' ' || trim(cl.clien_nom_clien) AS nombres, plina_fec_aprob, cl.clien_ide_clien, plina_cod_plina, plina_des_plina
-                    FROM andplina JOIN cnxctadp ct ON ct.ctadp_cod_ctadp = plina_cod_ctade
-                    JOIN cnxclien cl ON cl.clien_cod_clien = ct.ctadp_cod_clien
-                  WHERE plina_cod_ctaor = :ctadp
-                  AND plina_num_plina = :numnomina
-                  AND plina_ctr_trans = :estado
-                           """;
+                String sql;
+                sql = """
+                          SELECT plina_cod_ctade, plina_val_trans, plina_ctr_trans,plina_fec_carga,ct.ctadp_cod_clien,trim(cl.clien_ape_clien) || ' ' || trim(cl.clien_nom_clien) AS nombres, plina_fec_aprob, cl.clien_ide_clien, plina_cod_plina, plina_des_plina
+                          FROM andplina JOIN cnxctadp ct ON ct.ctadp_cod_ctadp = plina_cod_ctade
+                          JOIN cnxclien cl ON cl.clien_cod_clien = ct.ctadp_cod_clien
+                        WHERE plina_cod_ctaor = :ctadp
+                        AND plina_num_plina = :numnomina
+                        AND plina_ctr_trans = :estado
+                        """;
 
 
-            Query query = entityManager.createNativeQuery(sql);
-            query.setParameter("ctadp", ctadp);
-            query.setParameter("numnomina", numnomina);
-            query.setParameter("estado", estado);
+                Query query = entityManager.createNativeQuery(sql);
+                query.setParameter("ctadp", ctadp);
+                query.setParameter("numnomina", numnomina);
+                query.setParameter("estado", estado);
 
-            List<Object[]> results = query.getResultList();
+                List<Object[]> results = query.getResultList();
 
-            if (results.isEmpty()) {
-                Map<String, Object> err = new HashMap<>();
-                err.put("status", "NOMINA404");
-                err.put("errors", "No existen registros de nómina para los filtros enviados.");
-                response.put("success", false);
-                response.put("AllData", List.of(err));
-                return new ResponseEntity<>(response, HttpStatus.OK);
-            }
+                if (results.isEmpty()) {
+                    Map<String, Object> err = new HashMap<>();
+                    err.put("status", "NOMINA404");
+                    err.put("errors", "No existen registros de nómina para los filtros enviados.");
+                    response.put("success", false);
+                    response.put("AllData", List.of(err));
+                    return new ResponseEntity<>(response, HttpStatus.OK);
+                }
 
-            int i = 1;
+                int i = 1;
 
 
-            for (Object[] row : results) {
-                Map<String, Object> datos = new HashMap<>();
+                for (Object[] row : results) {
+                    Map<String, Object> datos = new HashMap<>();
 
-                datos.put("registros", i++);
+                    datos.put("registros", i++);
 
-                datos.put("ctadp_acredita",
-                        row[0] != null ? row[0].toString().trim() : null);
+                    datos.put("ctadp_acredita",
+                            row[0] != null ? row[0].toString().trim() : null);
 
-                datos.put("val_acredita",
-                        row[1] != null ? row[1].toString().trim() : null);
+                    datos.put("val_acredita",
+                            row[1] != null ? row[1].toString().trim() : null);
 
-                datos.put("fec_carga",
-                        row[3] != null ? row[3].toString().trim() : null);
+                    datos.put("fec_carga",
+                            row[3] != null ? row[3].toString().trim() : null);
 
-                datos.put("nombres",
-                        row[5] != null ? row[5].toString().trim() : null);
+                    datos.put("nombres",
+                            row[5] != null ? row[5].toString().trim() : null);
 
-                datos.put("fec_aprobado",
-                        row[6] != null ? row[6].toString().trim() : "N/A");
-                datos.put("ide_cliente",
-                        row[7] != null ? row[7].toString().trim() : "N/A");
+                    datos.put("fec_aprobado",
+                            row[6] != null ? row[6].toString().trim() : "N/A");
+                    datos.put("ide_cliente",
+                            row[7] != null ? row[7].toString().trim() : "N/A");
 
-                datos.put("codreg",
-                        row[8] != null ? row[8].toString().trim() : "N/A");
+                    datos.put("codreg",
+                            row[8] != null ? row[8].toString().trim() : "N/A");
 
-                datos.put("descripcion",
-                        row[9] != null ? row[9].toString().trim() : "N/A");
-                allDataList.add(datos);
-                 }
+                    datos.put("descripcion",
+                            row[9] != null ? row[9].toString().trim() : "N/A");
+                    allDataList.add(datos);
+                }
             }
             response.put("success", true);
             response.put("DatosNomina", allDataList);
@@ -465,6 +473,7 @@ public class NominasService {
             return new ResponseEntity<>(response, HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
+
     public ResponseEntity<Map<String, Object>> listarNomina(HttpServletRequest request, Authentication authentication, NominasUtils requestData) {
         Map<String, Object> response = new HashMap<>();
         List<Map<String, Object>> allDataList = new ArrayList<>();
@@ -474,8 +483,8 @@ public class NominasService {
 
             String token = Obtenertoken.desdeCookie(request);
             String cliacUsuVirtu = authentication.getName();
-            String numSocio      = jwtUtil.getcodcliente(token);
-            String clienIdenti   = jwtUtil.getrucIdenClie(token);
+            String numSocio = jwtUtil.getcodcliente(token);
+            String clienIdenti = jwtUtil.getrucIdenClie(token);
 
             if (cliacUsuVirtu == null || numSocio == null || clienIdenti == null) {
                 Map<String, Object> err = new HashMap<>();
@@ -485,7 +494,6 @@ public class NominasService {
                 response.put("AllData", allDataList);
                 return new ResponseEntity<>(response, HttpStatus.UNAUTHORIZED);
             }
-
 
 
             if (token == null) {
@@ -509,11 +517,11 @@ public class NominasService {
             String estado = requestData.getEstado();
             String ctadp = requestData.getCtadp();
             String numnomina = requestData.getNumnomina();
-            String valservi  = requestData.getValservi();
+            String valservi = requestData.getValservi();
             LocalDate fechaInicio = requestData.getFechaInicio();
             LocalDate fechaFin = requestData.getFechaFin();
 
-            if (estado == null || numnomina == null ) {
+            if (estado == null || numnomina == null) {
                 Map<String, Object> err = new HashMap<>();
                 err.put("status", "AA022");
                 err.put("errors", "Datos incompletos: estado, numnomina y ctaor son obligatorios.");
@@ -523,21 +531,21 @@ public class NominasService {
             }
 
             if (valservi.equals("2")) {
-            String codbanco =  requestData.getCodbanco();
+                String codbanco = requestData.getCodbanco();
 
                 String sql;
                 if (estado.equals("0")) {
                     sql = """
-                SELECT plexa_ide_desti, plexa_nom_desti, plexa_cod_ctade, plexa_val_trans, plexa_fec_carga FROM andplexa
-                WHERE plexa_ide_clien = :ideclien AND plexa_cod_ifina = :cntbnco AND plexa_num_plnex = :numnomina
-                AND plexa_ctr_trans = :estado AND DATE(plexa_fec_aprob) BETWEEN :inicio AND :fin
-                      """;
+                            SELECT plexa_ide_desti, plexa_nom_desti, plexa_cod_ctade, plexa_val_trans, plexa_fec_carga FROM andplexa
+                            WHERE plexa_ide_clien = :ideclien AND plexa_cod_ifina = :cntbnco AND plexa_num_plnex = :numnomina
+                            AND plexa_ctr_trans = :estado AND DATE(plexa_fec_aprob) BETWEEN :inicio AND :fin
+                            """;
                 } else {
                     sql = """
-                  SELECT plexa_ide_desti, plexa_nom_desti, plexa_cod_ctade, plexa_val_trans, plexa_fec_carga
-                  FROM andplexa WHERE plexa_ide_clien = :ideclien AND plexa_cod_ifina = :cntbnco AND plexa_num_plnex = :numnomina
-                  AND plexa_ctr_trans = :estado AND DATE(plexa_fec_carga) BETWEEN :inicio AND :fin
-                     """;
+                            SELECT plexa_ide_desti, plexa_nom_desti, plexa_cod_ctade, plexa_val_trans, plexa_fec_carga
+                            FROM andplexa WHERE plexa_ide_clien = :ideclien AND plexa_cod_ifina = :cntbnco AND plexa_num_plnex = :numnomina
+                            AND plexa_ctr_trans = :estado AND DATE(plexa_fec_carga) BETWEEN :inicio AND :fin
+                            """;
                 }
 
                 Query query = entityManager.createNativeQuery(sql);
@@ -554,7 +562,7 @@ public class NominasService {
                 if (results.isEmpty()) {
                     Map<String, Object> err = new HashMap<>();
                     err.put("status", "NOMINA404");
-                    err.put("errors", "No existen registros de nómina para los filtros enviados." );
+                    err.put("errors", "No existen registros de nómina para los filtros enviados.");
                     response.put("success", false);
                     response.put("AllData", List.of(err));
                     return new ResponseEntity<>(response, HttpStatus.OK);
@@ -592,24 +600,24 @@ public class NominasService {
 
                 if (estado.equals("0")) {
                     sql = """
-                SELECT plina_cod_ctade, plina_val_trans, plina_ctr_trans,plina_fec_carga,ct.ctadp_cod_clien,trim(cl.clien_ape_clien) || ' ' || trim(cl.clien_nom_clien) AS nombres, plina_fec_aprob, cl.clien_ide_clien
-                            FROM andplina JOIN cnxctadp ct ON ct.ctadp_cod_ctadp = plina_cod_ctade
-                            JOIN cnxclien cl ON cl.clien_cod_clien = ct.ctadp_cod_clien
-                WHERE plina_cod_ctaor = :ctadp
-                  AND plina_num_plina = :numnomina
-                  AND plina_ctr_trans = :estado
-                  AND DATE(plina_fec_aprob) BETWEEN :inicio AND :fin
-            """;
+                                SELECT plina_cod_ctade, plina_val_trans, plina_ctr_trans,plina_fec_carga,ct.ctadp_cod_clien,trim(cl.clien_ape_clien) || ' ' || trim(cl.clien_nom_clien) AS nombres, plina_fec_aprob, cl.clien_ide_clien
+                                            FROM andplina JOIN cnxctadp ct ON ct.ctadp_cod_ctadp = plina_cod_ctade
+                                            JOIN cnxclien cl ON cl.clien_cod_clien = ct.ctadp_cod_clien
+                                WHERE plina_cod_ctaor = :ctadp
+                                  AND plina_num_plina = :numnomina
+                                  AND plina_ctr_trans = :estado
+                                  AND DATE(plina_fec_aprob) BETWEEN :inicio AND :fin
+                            """;
                 } else {
                     sql = """
-                SELECT plina_cod_ctade, plina_val_trans, plina_ctr_trans, plina_fec_carga,ct.ctadp_cod_clien,trim(cl.clien_ape_clien) || ' ' || trim(cl.clien_nom_clien) AS nombres, plina_fec_aprob, cl.clien_ide_clien
-                            FROM andplina JOIN cnxctadp ct ON ct.ctadp_cod_ctadp = plina_cod_ctade
-                            JOIN cnxclien cl ON cl.clien_cod_clien = ct.ctadp_cod_clien
-                WHERE plina_cod_ctaor = :ctadp
-                  AND plina_num_plina = :numnomina
-                  AND plina_ctr_trans = :estado
-                  AND DATE(plina_fec_carga) BETWEEN :inicio AND :fin
-            """;
+                                SELECT plina_cod_ctade, plina_val_trans, plina_ctr_trans, plina_fec_carga,ct.ctadp_cod_clien,trim(cl.clien_ape_clien) || ' ' || trim(cl.clien_nom_clien) AS nombres, plina_fec_aprob, cl.clien_ide_clien
+                                            FROM andplina JOIN cnxctadp ct ON ct.ctadp_cod_ctadp = plina_cod_ctade
+                                            JOIN cnxclien cl ON cl.clien_cod_clien = ct.ctadp_cod_clien
+                                WHERE plina_cod_ctaor = :ctadp
+                                  AND plina_num_plina = :numnomina
+                                  AND plina_ctr_trans = :estado
+                                  AND DATE(plina_fec_carga) BETWEEN :inicio AND :fin
+                            """;
                 }
 
                 Query query = entityManager.createNativeQuery(sql);
@@ -684,8 +692,8 @@ public class NominasService {
 
             String token = Obtenertoken.desdeCookie(request);
             String cliacUsuVirtu = authentication.getName();
-            String numSocio      = jwtUtil.getcodcliente(token);
-            String clienIdenti   = jwtUtil.getrucIdenClie(token);
+            String numSocio = jwtUtil.getcodcliente(token);
+            String clienIdenti = jwtUtil.getrucIdenClie(token);
 
             if (cliacUsuVirtu == null || numSocio == null || clienIdenti == null) {
                 Map<String, Object> err = new HashMap<>();
@@ -695,7 +703,6 @@ public class NominasService {
                 response.put("AllData", allDataList);
                 return new ResponseEntity<>(response, HttpStatus.UNAUTHORIZED);
             }
-
 
 
             if (token == null) {
@@ -719,11 +726,11 @@ public class NominasService {
             String estado = requestData.getEstado();
             String ctadp = requestData.getCtadp();
             String numnomina = requestData.getNumnomina();
-            String valservi  = requestData.getValservi();
+            String valservi = requestData.getValservi();
             LocalDate fechaInicio = requestData.getFechaInicio();
             LocalDate fechaFin = requestData.getFechaFin();
 
-            if (estado == null || valservi == null ) {
+            if (estado == null || valservi == null) {
                 Map<String, Object> err = new HashMap<>();
                 err.put("status", "AA022");
                 err.put("errors", "Datos incompletos: estado, numnomina y ctaor son obligatorios.");
@@ -738,67 +745,66 @@ public class NominasService {
 
                 if ("3".equals(estado)) {
 
-                                sql = """
-                    SELECT 
-                        plexa_ide_desti,
-                        plexa_nom_desti,
-                        plexa_cod_ctade,
-                        plexa_val_trans,
-                        plexa_fec_carga,
-                        plexa_cod_ifina,
-                        plexa_num_plnex,
-                        ifi.ifina_nom_ifina,
-                        plexa_fec_aprob,
-                        plexa_ctr_trans,
-                        plexa_cod_ctaor
-                    FROM andplexa
-                    JOIN cnxifina ifi ON ifi.ifina_cod_ifina = plexa_cod_ifina
-                    WHERE plexa_ide_clien = :ideclien
-                """;
+                    sql = """
+                                SELECT 
+                                    plexa_ide_desti,
+                                    plexa_nom_desti,
+                                    plexa_cod_ctade,
+                                    plexa_val_trans,
+                                    plexa_fec_carga,
+                                    plexa_cod_ifina,
+                                    plexa_num_plnex,
+                                    ifi.ifina_nom_ifina,
+                                    plexa_fec_aprob,
+                                    plexa_ctr_trans,
+                                    plexa_cod_ctaor
+                                FROM andplexa
+                                JOIN cnxifina ifi ON ifi.ifina_cod_ifina = plexa_cod_ifina
+                                WHERE plexa_ide_clien = :ideclien
+                            """;
 
                     query = entityManager.createNativeQuery(sql);
                     query.setParameter("ideclien", clienIdenti);
 
                 } else {
 
-                                sql = """
-                    SELECT 
-                        plexa_ide_desti,
-                        plexa_nom_desti,
-                        plexa_cod_ctade,
-                        plexa_val_trans,
-                        plexa_fec_carga,
-                        plexa_cod_ifina,
-                        plexa_num_plnex,
-                        ifi.ifina_nom_ifina,
-                        plexa_fec_aprob,
-                        plexa_ctr_trans,
-                        plexa_cod_ctaor
-                    FROM andplexa
-                    JOIN cnxifina ifi ON ifi.ifina_cod_ifina = plexa_cod_ifina
-                    WHERE plexa_ide_clien = :ideclien
-                      AND plexa_ctr_trans = :estado
-                """;
+                    sql = """
+                                SELECT 
+                                    plexa_ide_desti,
+                                    plexa_nom_desti,
+                                    plexa_cod_ctade,
+                                    plexa_val_trans,
+                                    plexa_fec_carga,
+                                    plexa_cod_ifina,
+                                    plexa_num_plnex,
+                                    ifi.ifina_nom_ifina,
+                                    plexa_fec_aprob,
+                                    plexa_ctr_trans,
+                                    plexa_cod_ctaor
+                                FROM andplexa
+                                JOIN cnxifina ifi ON ifi.ifina_cod_ifina = plexa_cod_ifina
+                                WHERE plexa_ide_clien = :ideclien
+                                  AND plexa_ctr_trans = :estado
+                            """;
 
-                                query = entityManager.createNativeQuery(sql);
-                                query.setParameter("ideclien", clienIdenti);
-                                query.setParameter("estado", estado);
-                            }
+                    query = entityManager.createNativeQuery(sql);
+                    query.setParameter("ideclien", clienIdenti);
+                    query.setParameter("estado", estado);
+                }
 
-                            List<Object[]> results = query.getResultList();
+                List<Object[]> results = query.getResultList();
 
 
                 if (results.isEmpty()) {
                     Map<String, Object> err = new HashMap<>();
                     err.put("status", "NOMINA404");
-                    err.put("errors", "No existen registros de nómina para los filtros enviados." );
+                    err.put("errors", "No existen registros de nómina para los filtros enviados.");
                     response.put("success", false);
                     response.put("AllData", List.of(err));
                     return new ResponseEntity<>(response, HttpStatus.OK);
                 }
 
                 int i = 1;
-
 
 
                 for (Object[] row : results) {
@@ -840,47 +846,47 @@ public class NominasService {
                 Query query;
 
                 if ("3".equals(estado)) {
-                                 sql = """
-                    SELECT 
-                        plina_fec_carga,   
-                        plina_fec_aprob,  
-                        plina_cod_empre,  
-                        plina_cod_ctade, 
-                        plina_num_plina,  
-                        plina_cod_ctaor,
-                        em.empre_nom_empre, 
-                        plina_ctr_trans
-                    FROM andplina 
-                    JOIN cnxempre em ON em.empre_cod_empre = plina_cod_empre 
-                    WHERE plina_ide_clien = :ideclien
-                """;
+                    sql = """
+                                SELECT 
+                                    plina_fec_carga,   
+                                    plina_fec_aprob,  
+                                    plina_cod_empre,  
+                                    plina_cod_ctade, 
+                                    plina_num_plina,  
+                                    plina_cod_ctaor,
+                                    em.empre_nom_empre, 
+                                    plina_ctr_trans
+                                FROM andplina 
+                                JOIN cnxempre em ON em.empre_cod_empre = plina_cod_empre 
+                                WHERE plina_ide_clien = :ideclien
+                            """;
 
                     query = entityManager.createNativeQuery(sql);
                     query.setParameter("ideclien", clienIdenti);
 
                 } else {
-                      sql = """
-                    SELECT 
-                        plina_fec_carga,   
-                        plina_fec_aprob,  
-                        plina_cod_empre,  
-                        plina_cod_ctade, 
-                        plina_num_plina,  
-                        plina_cod_ctaor,
-                        em.empre_nom_empre, 
-                        plina_ctr_trans
-                    FROM andplina 
-                    JOIN cnxempre em ON em.empre_cod_empre = plina_cod_empre 
-                    WHERE plina_ide_clien = :ideclien
-                      AND plina_ctr_trans = :estado
-                """;
+                    sql = """
+                                SELECT 
+                                    plina_fec_carga,   
+                                    plina_fec_aprob,  
+                                    plina_cod_empre,  
+                                    plina_cod_ctade, 
+                                    plina_num_plina,  
+                                    plina_cod_ctaor,
+                                    em.empre_nom_empre, 
+                                    plina_ctr_trans
+                                FROM andplina 
+                                JOIN cnxempre em ON em.empre_cod_empre = plina_cod_empre 
+                                WHERE plina_ide_clien = :ideclien
+                                  AND plina_ctr_trans = :estado
+                            """;
 
-                                query = entityManager.createNativeQuery(sql);
-                                query.setParameter("ideclien", clienIdenti);
-                                query.setParameter("estado", estado);
-                            }
+                    query = entityManager.createNativeQuery(sql);
+                    query.setParameter("ideclien", clienIdenti);
+                    query.setParameter("estado", estado);
+                }
 
-                            List<Object[]> results = query.getResultList();
+                List<Object[]> results = query.getResultList();
 
 
                 if (results.isEmpty()) {
@@ -900,12 +906,12 @@ public class NominasService {
                     datos.put("registros", i++);
                     datos.put("fec_carga", row[0] != null ? row[0].toString().trim() : null);
                     datos.put("fec_aprobado", row[1] != null ? row[1].toString().trim() : "N/A");
-                //    datos.put("ctadp_acredita", row[3] != null ? row[3].toString().trim() : null);
+                    //    datos.put("ctadp_acredita", row[3] != null ? row[3].toString().trim() : null);
                     datos.put("num_nomina", row[4] != null ? row[4].toString().trim() : null);
                     datos.put("cuenta_origen", row[5] != null ? row[5].toString().trim() : null);
 
                     datos.put("nom_banco", row[6] != null ? row[6].toString().trim() : null);
-                 //   datos.put("ide_cliente", row[2] != null ? row[2].toString().trim() : "N/A");
+                    //   datos.put("ide_cliente", row[2] != null ? row[2].toString().trim() : "N/A");
 
                     datos.put("estado", row[7] != null ? row[7].toString().trim() : null);
                     String desEstado = null;
@@ -941,7 +947,6 @@ public class NominasService {
     }
 
 
-
     public ResponseEntity<Map<String, Object>> cargaNominaInterna(HttpServletRequest request, Authentication authentication, List<NominasUtils> requestDataList) {
 
         Map<String, Object> response = new HashMap<>();
@@ -972,10 +977,10 @@ public class NominasService {
             String ctaOrigen = requestDataList.get(0).getCtaOrigen();
 
             String sql1 = """
-                    SELECT MAX(plina_num_plina) AS numsecu
-                    FROM andplina
-                    WHERE plina_cod_ctaor = :ctaOrigen
-                """;
+                        SELECT MAX(plina_num_plina) AS numsecu
+                        FROM andplina
+                        WHERE plina_cod_ctaor = :ctaOrigen
+                    """;
 
             Query query1 = entityManager.createNativeQuery(sql1);
             query1.setParameter("ctaOrigen", ctaOrigen);
@@ -1003,15 +1008,15 @@ public class NominasService {
                 response.put("AllData", List.of(err));
                 return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
             }
+            // [kguanoluisa] - Se cambia ctadp_cod_depos para permitir tipos IN (1,9) - 08/05/2026
             String sqlofici = """
-                                SELECT ctadp_cod_ofici FROM cnxctadp
-                                WHERE ctadp_cod_ctadp = :ctaOrigen AND ctadp_cod_ectad = :estcuenta AND ctadp_cod_depos = :tdepos
-                            """;
+                        SELECT ctadp_cod_ofici FROM cnxctadp
+                        WHERE ctadp_cod_ctadp = :ctaOrigen AND ctadp_cod_ectad = :estcuenta AND ctadp_cod_depos IN (1,9)
+                    """;
 
             Query queryofi = entityManager.createNativeQuery(sqlofici);
             queryofi.setParameter("ctaOrigen", ctaOrigen);
             queryofi.setParameter("estcuenta", 1);
-            queryofi.setParameter("tdepos", 1);
 
             List<?> resultsofi = queryofi.getResultList();
 
@@ -1037,7 +1042,7 @@ public class NominasService {
                 String monto = item.getMonto();
 
                 // VALIDACIÓN DE DATOS DE CADA OBJETO
-                if (ideClien == null || ctaDestino == null || monto == null || ctaOrigen == null || descripcion == null){
+                if (ideClien == null || ctaDestino == null || monto == null || ctaOrigen == null || descripcion == null) {
                     Map<String, Object> err = new HashMap<>();
                     err.put("message", "Datos del socio incompletos");
                     err.put("status", "AA022");
@@ -1068,7 +1073,6 @@ public class NominasService {
                     allDataList.add(err);
                     continue;
                 }
-
 
 
                 String sqlInsertPlina =
@@ -1105,7 +1109,7 @@ public class NominasService {
                     datos.put("mensaje", "No se registró la carga de nómina");
                     allDataList.add(datos);
                     response.put("AllData", allDataList);
-                }else {
+                } else {
                     response.put("registros", i++);
                     response.put("message", "Nomina Interna Cargada con exito");
                     response.put("success", true);
@@ -1114,12 +1118,11 @@ public class NominasService {
             return new ResponseEntity<>(response, HttpStatus.OK);
 
         } catch (Exception e) {
-            Map<String, Object> err = new HashMap<>();
-            err.put("status", "ERRORTRFINTER500");
-            err.put("errors", e.getMessage());
-
-            response.put("AllData", Collections.singletonList(err));
-            return new ResponseEntity<>(response, HttpStatus.INTERNAL_SERVER_ERROR);
+            // [kguanoluisa] - Se re-lanza en lugar de retornar ResponseEntity para que el interceptor
+            // @Transactional haga rollback limpio y GlobalExceptionHandler reciba la causa SQL original.
+            // Si se retorna normalmente, Spring intenta commitear, ve rollback-only y lanza una NUEVA
+            // UnexpectedRollbackException sin cadena de causas, perdiendo el error SQL. - 21/05/2026
+            throw new RuntimeException(e.getMessage(), e);
         }
     }
 
@@ -1139,7 +1142,7 @@ public class NominasService {
             String token = Obtenertoken.desdeCookie(request);
 
             String clienIdenti = authentication.getName();
-            String  cliacUsuRuc = jwtUtil.getrucIdenClie(token);
+            String cliacUsuRuc = jwtUtil.getrucIdenClie(token);
             String numSocio = jwtUtil.getcodcliente(token);
 
 
@@ -1166,12 +1169,12 @@ public class NominasService {
             // VALIDACIÓN DEL TOKEN TEMPORAL
 
             String sqlVerificaTokenBDD = """
-            SELECT FIRST 1 codaccess_codigo_temporal FROM vircodaccess
-            WHERE codaccess_cedula = :ced AND codaccess_usuario = :usr
-              AND codaccess_estado = '1'
-              AND codsms_codigo = '11'
-            ORDER BY codaccess_id DESC
-            """;
+                    SELECT FIRST 1 codaccess_codigo_temporal FROM vircodaccess
+                    WHERE codaccess_cedula = :ced AND codaccess_usuario = :usr
+                      AND codaccess_estado = '1'
+                      AND codsms_codigo = '11'
+                    ORDER BY codaccess_id DESC
+                    """;
 
             Query queryVerificaTokenBDD = entityManager.createNativeQuery(sqlVerificaTokenBDD);
             queryVerificaTokenBDD.setParameter("ced", cliacUsuRuc);
@@ -1230,7 +1233,7 @@ public class NominasService {
                 }
 
                 // Verificación token por cada item
-                String  codTempDirec  = dto.getCodTempDirec();
+                String codTempDirec = dto.getCodTempDirec();
 
 
                 if (!tokenFromDB.trim().equals(dto.getCodTempDirec())) {
@@ -1280,12 +1283,11 @@ public class NominasService {
                                 return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
                             }
                         } catch (Exception e) {
-                            response.put("message", "Error al intentar bloquear el usuario");
-                            response.put("status", "AA024");
-                            return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+                            //kguanoluisa, [Se relanza excepcion del catch interno para propagar rollback correcto en @Transactional][][2026-05-21]
+                            throw new RuntimeException("Error al intentar bloquear el usuario: " + e.getMessage(), e);
                         }
                     } else {
-                        response.put("message", "Código temporal incorrecto. Intentos restantes: " + (3 - intentosRealizadoTokenFallos) );
+                        response.put("message", "Código temporal incorrecto. Intentos restantes: " + (3 - intentosRealizadoTokenFallos));
                         response.put("status", "AA023");
                         return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
                     }
@@ -1307,14 +1309,14 @@ public class NominasService {
                 // ➤ OBTENER DATOS DE CUENTA ORIGEN / DESTINO
 
                 String sqlCuentaOrigen = """
-                SELECT clien_cod_empre, clien_cod_ofici, ctadp_cod_ctadp
-                FROM cnxctadp, cnxclien, andusvco
-                WHERE ctadp_cod_ctadp = :cta
-                AND ctadp_cod_depos IN (1,2,9)
-                AND ctadp_cod_ectad = '1'
-                AND ctadp_cod_clien = clien_cod_clien
-                AND clien_ide_clien = usvco_ide_clien
-                """;
+                        SELECT clien_cod_empre, clien_cod_ofici, ctadp_cod_ctadp
+                        FROM cnxctadp, cnxclien, andusvco
+                        WHERE ctadp_cod_ctadp = :cta
+                        AND ctadp_cod_depos IN (1,2,9)
+                        AND ctadp_cod_ectad = '1'
+                        AND ctadp_cod_clien = clien_cod_clien
+                        AND clien_ide_clien = usvco_ide_clien
+                        """;
 
                 Query qOri = entityManager.createNativeQuery(sqlCuentaOrigen);
                 qOri.setParameter("cta", numeroCuentaEnvio);
@@ -1333,16 +1335,15 @@ public class NominasService {
                 String ctaOri = ori[2].toString().trim();
 
 
-
 // ➤ OBTENER OFICINA DESTINO
                 String sqlCuentaDestino = """
-    SELECT clien_cod_ofici
-    FROM cnxctadp, cnxclien
-    WHERE ctadp_cod_ctadp = :cta
-      AND ctadp_cod_depos IN (1,2,9)
-      AND ctadp_cod_ectad = '1'
-      AND ctadp_cod_clien = clien_cod_clien
-""";
+                            SELECT clien_cod_ofici
+                            FROM cnxctadp, cnxclien
+                            WHERE ctadp_cod_ctadp = :cta
+                              AND ctadp_cod_depos IN (1,2,9)
+                              AND ctadp_cod_ectad = '1'
+                              AND ctadp_cod_clien = clien_cod_clien
+                        """;
 
                 Query qDes = entityManager.createNativeQuery(sqlCuentaDestino);
                 qDes.setParameter("cta", numeroCtaDestino);
@@ -1360,12 +1361,12 @@ public class NominasService {
 
                 if (mismaOficina) {
                     callTransferProcedure = """
-        CALL cnxprc_reg_trfwb(:empre, :ofici, '803', :desc, :cta_ori, :cta_des, :valor)
-    """;
+                                CALL cnxprc_reg_trfwb(:empre, :ofici, '803', :desc, :cta_ori, :cta_des, :valor)
+                            """;
                 } else {
                     callTransferProcedure = """
-        CALL cnxprc_trnsf_rmtwb(:empre, :ofici, '803', :desc, :cta_ori, :cta_des, :valor)
-    """;
+                                CALL cnxprc_trnsf_rmtwb(:empre, :ofici, '803', :desc, :cta_ori, :cta_des, :valor)
+                            """;
                 }
 
 
@@ -1411,23 +1412,23 @@ public class NominasService {
 
 
                 String sqlUpdate = """
-                UPDATE andplina
-                SET plina_ctr_trans = :estado,
-                    plina_usu_aprob = :usuAprob,
-                    plina_fec_aprob = CURRENT,
-                    plina_num_trans = :numTrans
-                WHERE plina_cod_ctaor = :ctaOrigen
-                  AND plina_cod_ctade = :ctaDestino
-                  AND plina_cod_plina = :codreg
-                  AND plina_ctr_trans = 1
-                  AND plina_num_plina = :codNomina
-                """;
+                        UPDATE andplina
+                        SET plina_ctr_trans = :estado,
+                            plina_usu_aprob = :usuAprob,
+                            plina_fec_aprob = CURRENT,
+                            plina_num_trans = :numTrans
+                        WHERE plina_cod_ctaor = :ctaOrigen
+                          AND plina_cod_ctade = :ctaDestino
+                          AND plina_cod_plina = :codreg
+                          AND plina_ctr_trans = 1
+                          AND plina_num_plina = :codNomina
+                        """;
 
                 Query queryUpdate = entityManager.createNativeQuery(sqlUpdate);
                 queryUpdate.setParameter("estado", 0);
                 queryUpdate.setParameter("usuAprob", clienIdenti);
                 queryUpdate.setParameter("numTrans", numTrans);
-                queryUpdate.setParameter("ctaOrigen",  numeroCuentaEnvio);
+                queryUpdate.setParameter("ctaOrigen", numeroCuentaEnvio);
                 queryUpdate.setParameter("ctaDestino", numeroCtaDestino);
                 queryUpdate.setParameter("codreg", codreg);
                 queryUpdate.setParameter("codNomina", numNomina);
@@ -1439,7 +1440,6 @@ public class NominasService {
 
                     return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
                 }
-
 
 
             }
@@ -1479,10 +1479,8 @@ public class NominasService {
             return new ResponseEntity<>(response, HttpStatus.OK);
 
         } catch (Exception ex) {
-
-            response.put("status", "ERROR999");
-            response.put("error", ex.getMessage());
-            return new ResponseEntity<>(response, HttpStatus.INTERNAL_SERVER_ERROR);
+            //kguanoluisa, [Se relanza excepcion para que @Transactional haga rollback limpio y no lanze UnexpectedRollbackException][][2026-05-21]
+            throw new RuntimeException("Error en acreditarNominaInterna: " + ex.getMessage(), ex);
         }
     }
 
@@ -1508,7 +1506,7 @@ public class NominasService {
             String numSocio = jwtUtil.getcodcliente(token);
 
             String numeroCuentaEnvio = requestData.getCtaOrigen();
-          //  String numeroCtaDestino = requestData.getCtaDestino();
+            //  String numeroCtaDestino = requestData.getCtaDestino();
 
             // Validación de datos del token
             if (cliacUsuRuc == null || clienIdenti == null || numSocio == null) {
@@ -1544,7 +1542,7 @@ public class NominasService {
             query.setParameter("cod_ctadp", numeroCuentaEnvio);
             query.setParameter("cod_ectad", "1");
             query.setParameter("clien_cod_clien", numSocio);
-            query.setParameter("clien_ide_clien",clienIdenti);
+            query.setParameter("clien_ide_clien", clienIdenti);
             List<Object[]> results = query.getResultList();
 
             // Procesar resultados cuenta origen
@@ -1566,7 +1564,7 @@ public class NominasService {
             //generar codigo
             String CodigoTrfDirectas = codigoAleatorio6Temp();
             SendSMS smsDesbloqueo = new SendSMS();
-            smsDesbloqueo.sendSecurityCodeSMS(tlfCtaEnvio,"1150",CodigoTrfDirectas,"efectuar la Transferencia directa", fecha);
+            smsDesbloqueo.sendSecurityCodeSMS(tlfCtaEnvio, "1150", CodigoTrfDirectas, "efectuar la Transferencia directa", fecha);
             // Enviar correo
             sendEmail enviarCorreo = new sendEmail();
             enviarCorreo.sendEmailTokenTemp(apellCtaEnvio, nombreCtaEnvio, fecha, emailCtaEnvio, CodigoTrfDirectas);
@@ -1592,7 +1590,7 @@ public class NominasService {
             resultInsertTokenAcceso.executeUpdate();
             tokenExpirationService.programarExpiracionToken(clienIdenti, CodigoTrfDirectas, "11");
 
-            response.put("message", "CODIGO GENERADO CON EXITO " );
+            response.put("message", "CODIGO GENERADO CON EXITO ");
             response.put("status", "CODTRFOK005");
             return new ResponseEntity<>(response, HttpStatus.OK);
 
@@ -1640,11 +1638,11 @@ public class NominasService {
 
             // OBTENER SECUENCIA
             String sql1 = """
-                SELECT  max(plexa_num_plnex) as numsec
-                FROM andplexa 
-                WHERE plexa_cod_ctaor = :ctaOrigen
-                  AND plexa_ide_clien = :cliacUsu
-                """;
+                    SELECT  max(plexa_num_plnex) as numsec
+                    FROM andplexa 
+                    WHERE plexa_cod_ctaor = :ctaOrigen
+                      AND plexa_ide_clien = :cliacUsu
+                    """;
 
             Query query1 = entityManager.createNativeQuery(sql1);
             query1.setParameter("ctaOrigen", requestDataList.get(0).getCtaOrigen());
@@ -1664,17 +1662,15 @@ public class NominasService {
             }
 
 
-
-
             // OBTENER NOMBRE CLIENTE ORIGEN
             String sqlNom = """
-                   SELECT TRIM(cl.clien_ape_clien) || ' ' || TRIM(cl.clien_nom_clien),
-                        cl.clien_cod_ofici
-                    FROM cnxctadp c
-                    JOIN cnxclien cl ON cl.clien_cod_clien = c.ctadp_cod_clien
-                    WHERE c.ctadp_cod_ctadp = :ctaOrigen
-                      AND cl.clien_ide_clien = :identificacion
-                """;
+                       SELECT TRIM(cl.clien_ape_clien) || ' ' || TRIM(cl.clien_nom_clien),
+                            cl.clien_cod_ofici
+                        FROM cnxctadp c
+                        JOIN cnxclien cl ON cl.clien_cod_clien = c.ctadp_cod_clien
+                        WHERE c.ctadp_cod_ctadp = :ctaOrigen
+                          AND cl.clien_ide_clien = :identificacion
+                    """;
 
             Query qNom = entityManager.createNativeQuery(sqlNom);
             qNom.setParameter("ctaOrigen", requestDataList.get(0).getCtaOrigen());
@@ -1690,7 +1686,7 @@ public class NominasService {
 
             for (NominasUtils item : requestDataList) {
 
-                String descripcion =   item.getDescripcion();
+                String descripcion = item.getDescripcion();
 
                 if (item.getIdeClien() == null || item.getCtaDestino() == null ||
                         item.getMonto() == null || item.getCtaOrigen() == null ||
@@ -1702,8 +1698,6 @@ public class NominasService {
                     allDataList.add(err);
                     continue;
                 }
-
-
 
                 String sqlInsertPlexa =
                         "INSERT INTO andplexa (" +
@@ -1717,25 +1711,25 @@ public class NominasService {
                                 ":ideDest, :nomDest, :codbanco, :ctaDest, :tcuent, :desc, 1, 0.36, :usuCarga, CURRENT, " +
                                 "'', NULL, :numSecu, NULL, 1)";
 
-                         Query insert = entityManager.createNativeQuery(sqlInsertPlexa);
+                Query insert = entityManager.createNativeQuery(sqlInsertPlexa);
 
-                        insert.setParameter("codOfici", codOfici);
-                        insert.setParameter("numSocio", numSocio);
-                        insert.setParameter("ideOrigen", clienIdenti);
-                        insert.setParameter("nomOrigen", nombresOrigen);
-                        insert.setParameter("ctaOrigen", item.getCtaOrigen());
-                            BigDecimal valor = new BigDecimal(item.getMonto().trim());
-                          insert.setParameter("valor", valor);
-                        insert.setParameter("ideDest", item.getIdeClien());
-                        insert.setParameter("nomDest", item.getNombresDes());
-                        insert.setParameter("ctaDest", item.getCtaDestino());
-                        insert.setParameter("desc", descripcion);
-                        insert.setParameter("usuCarga", cliacUsuVirtu);
-                        insert.setParameter("numSecu", numSecu);
-                         insert.setParameter("codbanco", item.getCodbanco());
-                          insert.setParameter("tcuent", item.getTipoCuenta());
-                        insert.executeUpdate();
-                         i++;
+                insert.setParameter("codOfici", codOfici);
+                insert.setParameter("numSocio", numSocio);
+                insert.setParameter("ideOrigen", clienIdenti);
+                insert.setParameter("nomOrigen", nombresOrigen);
+                insert.setParameter("ctaOrigen", item.getCtaOrigen());
+                BigDecimal valor = new BigDecimal(item.getMonto().trim());
+                insert.setParameter("valor", valor);
+                insert.setParameter("ideDest", item.getIdeClien());
+                insert.setParameter("nomDest", item.getNombresDes());
+                insert.setParameter("ctaDest", item.getCtaDestino());
+                insert.setParameter("desc", descripcion);
+                insert.setParameter("usuCarga", cliacUsuVirtu);
+                insert.setParameter("numSecu", numSecu);
+                insert.setParameter("codbanco", item.getCodbanco());
+                insert.setParameter("tcuent", item.getTipoCuenta());
+                insert.executeUpdate();
+                i++;
             }
 
             Map<String, Object> resumen = new HashMap<>();
@@ -1749,11 +1743,8 @@ public class NominasService {
 
 
         } catch (Exception e) {
-            Map<String, Object> err = new HashMap<>();
-            err.put("status", "ERROR500");
-            err.put("errors", e.getMessage());
-            response.put("success", false);
-            return new ResponseEntity<>(err, HttpStatus.INTERNAL_SERVER_ERROR);
+            //kguanoluisa, [Se cambio el retorno de ResponseEntity por throw RuntimeException para propagar el error y evitar UnexpectedRollbackException][][2026-05-21]
+            throw new RuntimeException("Error en cargaNominaExterna: " + e.getMessage(), e);
         }
     }
 
@@ -1796,11 +1787,11 @@ public class NominasService {
             }
 
             String sqlBloqueoUsuario = """
-                    SELECT usvco_ctr_bloq
-                    FROM andusvco
-                    WHERE usvco_ide_clien = :clienIdenti
-                      AND usvco_ide_usvco = :cliacUsuVirtu
-                """;
+                        SELECT usvco_ctr_bloq
+                        FROM andusvco
+                        WHERE usvco_ide_clien = :clienIdenti
+                          AND usvco_ide_usvco = :cliacUsuVirtu
+                    """;
 
             Query queryBloq = entityManager.createNativeQuery(sqlBloqueoUsuario);
             queryBloq.setParameter("clienIdenti", clienIdenti);
@@ -1920,7 +1911,7 @@ public class NominasService {
                             return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
                         }
                     } else {
-                        response.put("message", "Código temporal incorrecto. Intentos restantes: " + (3 - intentosRealizadoTokenFallos) );
+                        response.put("message", "Código temporal incorrecto. Intentos restantes: " + (3 - intentosRealizadoTokenFallos));
                         response.put("status", "AA023");
                         return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
                     }
@@ -1940,21 +1931,21 @@ public class NominasService {
                 }
 
 
-                    // CONSULTA CUENTA ORIGEN
+                // CONSULTA CUENTA ORIGEN
 
                 String sqlQuery = """
-                        SELECT ctadp_cod_empre,
-                               ctadp_cod_ofici,
-                               clien_ape_clien,
-                               clien_nom_clien,
-                               ctadp_cod_clien,
-                               clien_ide_clien
-                        FROM cnxctadp, cnxclien
-                        WHERE ctadp_cod_ctadp = :ctadp_cod_ctadp
-                          AND ctadp_cod_clien = :ctadp_cod_clien
-                          AND ctadp_cod_ectad = '1'
-                          AND ctadp_cod_clien = clien_cod_clien
-                    """;
+                            SELECT ctadp_cod_empre,
+                                   ctadp_cod_ofici,
+                                   clien_ape_clien,
+                                   clien_nom_clien,
+                                   ctadp_cod_clien,
+                                   clien_ide_clien
+                            FROM cnxctadp, cnxclien
+                            WHERE ctadp_cod_ctadp = :ctadp_cod_ctadp
+                              AND ctadp_cod_clien = :ctadp_cod_clien
+                              AND ctadp_cod_ectad = '1'
+                              AND ctadp_cod_clien = clien_cod_clien
+                        """;
 
                 Query query = entityManager.createNativeQuery(sqlQuery);
                 query.setParameter("ctadp_cod_ctadp", numeroCuentaEnvio);
@@ -1967,20 +1958,20 @@ public class NominasService {
                     response.put("status", "ERROR8017");
                     return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
                 }
-            // DATOS CUENTA ORIGEN
+                // DATOS CUENTA ORIGEN
 
                 Object[] resultEnvio = results.get(0);
 
                 String clieCodEmpresaEnvio = resultEnvio[0].toString().trim();
-                String clienCodOficiEnvio  = resultEnvio[1].toString().trim();
-                String clienApellEnvio     = resultEnvio[2].toString().trim();
-                String clieNomEnvio        = resultEnvio[3].toString().trim();
-                String clienCodEnvio       = resultEnvio[4].toString().trim();
-                String clinIdenEnvio       = resultEnvio[5].toString().trim();
+                String clienCodOficiEnvio = resultEnvio[1].toString().trim();
+                String clienApellEnvio = resultEnvio[2].toString().trim();
+                String clieNomEnvio = resultEnvio[3].toString().trim();
+                String clienCodEnvio = resultEnvio[4].toString().trim();
+                String clinIdenEnvio = resultEnvio[5].toString().trim();
 
                 String nomApellido = clienApellEnvio + " " + clieNomEnvio;
 
-               // LLAMADA SP SPI
+                // LLAMADA SP SPI
 
                 String callTransferProcedure =
                         "CALL cnxprc_reg_spi01_wb(" +
@@ -2026,9 +2017,9 @@ public class NominasService {
 
                 double valComision = 0.36;
 
-                ResponseEntity<Map<String, Object>> grabar2Response = grabar2(clieCodEmpresaEnvio,clienCodOficiEnvio,clinIdenEnvio,
-                        "0","803",valComision,1, nomApellido,"0","0",numeroCuentaEnvio,
-                        15,"125");
+                ResponseEntity<Map<String, Object>> grabar2Response = grabar2(clieCodEmpresaEnvio, clienCodOficiEnvio, clinIdenEnvio,
+                        "0", "803", valComision, 1, nomApellido, "0", "0", numeroCuentaEnvio,
+                        15, "125");
 
                 if (grabar2Response.getStatusCode() != HttpStatus.OK) {
                     return grabar2Response;
@@ -2037,20 +2028,20 @@ public class NominasService {
 
                 //cambiar estado de noimina
                 String sqlUpdatePlexa = """
-                                UPDATE andplexa
-                                SET plexa_ctr_trans = :estado, plexa_fec_aprob = CURRENT, plexa_usu_aprob = :usu_aprob ,plexa_num_trans = :numTrans
-                                WHERE plexa_cod_plexa = :codPlexa
-                                  AND plexa_ide_desti = :ideDesti
-                                  AND plexa_cod_cajas = 803
-                                  AND plexa_ide_clien = :ideClien
-                            """;
+                            UPDATE andplexa
+                            SET plexa_ctr_trans = :estado, plexa_fec_aprob = CURRENT, plexa_usu_aprob = :usu_aprob ,plexa_num_trans = :numTrans
+                            WHERE plexa_cod_plexa = :codPlexa
+                              AND plexa_ide_desti = :ideDesti
+                              AND plexa_cod_cajas = 803
+                              AND plexa_ide_clien = :ideClien
+                        """;
 
                 Query updateQuery = entityManager.createNativeQuery(sqlUpdatePlexa);
                 updateQuery.setParameter("estado", 0);
                 updateQuery.setParameter("ideDesti", cedulaCtaRecibe);
                 updateQuery.setParameter("codPlexa", dto.getCodreg());
                 updateQuery.setParameter("usu_aprob", cliacUsuVirtu);
-                updateQuery.setParameter("numTrans" , numTrans);
+                updateQuery.setParameter("numTrans", numTrans);
                 updateQuery.setParameter("ideClien", clienIdenti);
 
                 int filasActualizadas = updateQuery.executeUpdate();
@@ -2089,10 +2080,7 @@ public class NominasService {
 
         } catch (Exception e) {
             transactionManager.rollback(status);
-            Map<String, Object> err = new HashMap<>();
-            err.put("status", "ERROR500");
-            err.put("errors", e.getMessage());
-            return new ResponseEntity<>(err, HttpStatus.INTERNAL_SERVER_ERROR);
+            throw new RuntimeException("Error en acreditarNominaExterna: " + e.getMessage(), e);
         }
     }
 
@@ -2128,10 +2116,20 @@ public class NominasService {
             querySocioCliente.setParameter("cedula", cedula);
             List<?> rsSocioCliente = querySocioCliente.getResultList();
 
-            int codfprod = 15; // COMISIONES SERVICIOS CON IVA si no es socio
-            int iva = 2;
+            String sqlCobrarIva = "SELECT profi_val_enter FROM cnxprofi WHERE profi_cod_profi = 'ctrlcbrivasocio' AND profi_cod_ofici = :codigoOficina";
+            Query queryCobrarIva = entityManager.createNativeQuery(sqlCobrarIva);
+            queryCobrarIva.setParameter("codigoOficina", codigoOficina);
+            List<?> rsCobrarIva = queryCobrarIva.getResultList();
+            // toma el valor de la consulta 1 = si cobra, 0 = no cobra
+            int cobrarIva = 1;
+            if (!rsCobrarIva.isEmpty() && rsCobrarIva.get(0) != null) {
+                cobrarIva = Integer.parseInt(rsCobrarIva.get(0).toString());
+            }
 
-            if (!rsSocioCliente.isEmpty()) {
+            int codfprod = 15; // COMISIONES SERVICIOS CON IVA si no es socio
+            int iva = 6;
+
+            if (!rsSocioCliente.isEmpty() && cobrarIva == 0) {
                 codfprod = 16; // COMISIONES SERVICIOS SIN IVA si es socio
                 iva = 1;
             }
@@ -2251,9 +2249,9 @@ public class NominasService {
             String fechaFor = fecha_n.obtenerFecha();
 
             String rfcta_num_guias = "";
-            String rfcta_fec_emisi =  "TODAY";
+            String rfcta_fec_emisi = "TODAY";
 
-            String rfcta_num_compr=null;
+            String rfcta_num_compr = null;
 
 
             // Formatear guía de remisión si existe
@@ -2386,8 +2384,8 @@ public class NominasService {
             Integer rfcta_cod_efctr = 1;
             Integer modo = 1;
 
-            if (rfcta_cod_efctr.equals(1)){
-                if(modo.equals(1)){
+            if (rfcta_cod_efctr.equals(1)) {
+                if (modo.equals(1)) {
                     String callGeneraNroComprobante1 = "CALL generaNroComprobante2(:codigoEmpresa, :codigoOficina, :tipoComprobante, :numTrans)";
                     Query queryGeneraNroComprobante1 = entityManager.createNativeQuery(callGeneraNroComprobante1);
                     queryGeneraNroComprobante1.setParameter("codigoEmpresa", codigoEmpresa);
@@ -2408,7 +2406,7 @@ public class NominasService {
                     queryRegistraDocumentoWeb.setParameter("nsecuencia", nsecuencia1);
                     queryRegistraDocumentoWeb.setParameter("tipoComprobante", 1);
                     queryRegistraDocumentoWeb.setParameter("servicio", servicio);
-                    queryRegistraDocumentoWeb.setParameter("fecharegistro",fechaFor);
+                    queryRegistraDocumentoWeb.setParameter("fecharegistro", fechaFor);
                     String resultado = (String) queryRegistraDocumentoWeb.getSingleResult();
                     System.out.println("Resultado del procedimiento: " + resultado);
 
@@ -2425,16 +2423,10 @@ public class NominasService {
             return new ResponseEntity<>(response, HttpStatus.OK);
 
         } catch (Exception e) {
-            response.put("message", "Error interno del servidor");
-            response.put("status", "ERROR");
-            response.put("error", e.getMessage());
-            return new ResponseEntity<>(response, HttpStatus.INTERNAL_SERVER_ERROR);
+            //kguanoluisa, [Se relanza excepcion para que @Transactional haga rollback limpio. El metodo grabar2 hace INSERTs/CALLs contables][][2026-05-21]
+            throw new RuntimeException("Error en grabar2: " + e.getMessage(), e);
         }
     }
-
-
-
-
 
 
     public ResponseEntity<Map<String, Object>> genCodNomExterna(HttpServletRequest request, Authentication authentication, NominasUtils requestData) {
@@ -2500,7 +2492,7 @@ public class NominasService {
             query.setParameter("ctadp_cod_ctadp", numeroCuentaEnvio);
             query.setParameter("ctadp_cod_ectad", "1");
             query.setParameter("clien_cod_clien", numSocio);
-            query.setParameter("clien_ide_clien",clienIdenti);
+            query.setParameter("clien_ide_clien", clienIdenti);
             List<Object[]> results = query.getResultList();
 
             //  String sqlQueryVerDestino = """
@@ -2513,7 +2505,7 @@ public class NominasService {
 
             // Procesar resultados cuenta origen
             if (results.isEmpty()) {
-                response.put("message", "Cuenta origen no encontrada, bloqueda o cerrada" + "numeroCuentaEnvio "+ numeroCuentaEnvio + "numSocio "+ numSocio + "cliacUsuRuc " + cliacUsuRuc + "clienIdenti " +clienIdenti);
+                response.put("message", "Cuenta origen no encontrada, bloqueda o cerrada" + "numeroCuentaEnvio " + numeroCuentaEnvio + "numSocio " + numSocio + "cliacUsuRuc " + cliacUsuRuc + "clienIdenti " + clienIdenti);
                 response.put("status", "ERROR42037");
                 return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
             }
@@ -2536,7 +2528,7 @@ public class NominasService {
             //generar codigo
             String CodigoTrfDirectas = codigoAleatorio6Temp();
             SendSMS smsDesbloqueo = new SendSMS();
-            smsDesbloqueo.sendSecurityCodeSMS(tlfCtaEnvio,"1150",CodigoTrfDirectas,"efectuar la Transferencia directa", fecha);
+            smsDesbloqueo.sendSecurityCodeSMS(tlfCtaEnvio, "1150", CodigoTrfDirectas, "efectuar la Transferencia directa", fecha);
             // Enviar correo
             sendEmail enviarCorreo = new sendEmail();
             enviarCorreo.sendEmailTokenTemp(apellCtaEnvio, nombreCtaEnvio, fecha, emailCtaEnvio, CodigoTrfDirectas);
@@ -2568,11 +2560,8 @@ public class NominasService {
 
 
         } catch (Exception e) {
-            Map<String, Object> response = new HashMap<>();
-            response.put("message", "Error interno del servidor");
-            response.put("status", "ERROR");
-            response.put("error", e.getMessage());
-            return new ResponseEntity<>(response, HttpStatus.INTERNAL_SERVER_ERROR);
+            //kguanoluisa, [Se relanza excepcion para que @Transactional haga rollback del UPDATE e INSERT en vircodaccess][][2026-05-21]
+            throw new RuntimeException("Error en genCodNomExterna: " + e.getMessage(), e);
         }
     }
 
@@ -2610,6 +2599,7 @@ public class NominasService {
         int numeroAleatorio = 100000 + random.nextInt(900000); // Asegura 6 dígitos
         return String.valueOf(numeroAleatorio);
     }
+
     private float redondearMoneda(float valor) {
         return (float) (Math.floor(valor * 100 + 0.5) / 100);
     }

@@ -13,10 +13,12 @@ public class Libs {
     public Libs(EntityManager entityManager) {
         this.entityManager = entityManager;
     }
+
     public String obtenerFecha() throws Exception {
         List<Object[]> resultadoFecha = ejecutarConsultaFechaHora();
         return resultadoFecha.get(0)[0].toString().trim();
     }
+
     public String obtenerHora() throws Exception {
         List<Object[]> resultadoFecha = ejecutarConsultaFechaHora();
         return resultadoFecha.get(0)[1].toString().trim();
@@ -38,6 +40,7 @@ public class Libs {
 
         return resultadoFecha;
     }
+
     public static String formatoDosDecimales(Object value) {
         if (value == null) {
             return "0.00";

@@ -1,33 +1,28 @@
 package apiVirtualEmpresa.apiVirtualEmpresa.dashboard.service;
+
 import apiVirtualEmpresa.apiVirtualEmpresa.config.JwtUtil;
 import apiVirtualEmpresa.apiVirtualEmpresa.config.Obtenertoken;
 import apiVirtualEmpresa.apiVirtualEmpresa.dashboard.dto.DashboardUtils;
-import envioCorreo.sendEmail;
+import apiVirtualEmpresas.virtualempresas.libs.Libs;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import jakarta.persistence.Query;
 import jakarta.servlet.http.HttpServletRequest;
-import libs.PassSecure;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
-import sms.SendSMS;
-import envioCorreo.sendEmail;
-import apiVirtualEmpresas.virtualempresas.libs.Libs;
-
-
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.RequestBody;
-import sms.SendSMS;
 
 import java.time.LocalDate;
 import java.util.*;
+
 @Transactional
 @Service
 
 public class DashboardService {
-   
+
 
     @PersistenceContext
     private EntityManager entityManager;
@@ -71,7 +66,7 @@ public class DashboardService {
 
             // 3. LEER DATOS DEL TOKEN
             String clienIdenti = jwtUtil.getrucIdenClie(token);
-            String numSocio    = jwtUtil.getcodcliente(token);
+            String numSocio = jwtUtil.getcodcliente(token);
 
             if (clienIdenti == null || numSocio == null) {
                 Map<String, Object> err = new HashMap<>();
@@ -120,6 +115,13 @@ public class DashboardService {
             // Solo la primera fila
             Object[] row = resultado.get(0);
 
+            // [kguanoluisa] - Se valida si el usuario ha aceptado la ley de protección de datos - 12/05/2026
+            String sqlLey = "SELECT COUNT(*) FROM andaudlpdf WHERE audlpdf_cod_canal = 8 AND audlpdf_cod_clien = :codclien";
+            Query queryLey = entityManager.createNativeQuery(sqlLey);
+            queryLey.setParameter("codclien", numSocio);
+            Number countLey = (Number) queryLey.getSingleResult();
+            boolean leyAceptada = countLey.intValue() > 0;
+
             Map<String, Object> data = new HashMap<>();
             data.put("nombre_socio", row[0].toString().trim());
             data.put("telefono", row[3].toString().trim());
@@ -129,6 +131,7 @@ public class DashboardService {
             data.put("parroquia", row[8].toString().trim());
             data.put("estado_cuenta_desc", row[9].toString().trim());
             data.put("email", row[10].toString().trim());
+            data.put("leyProteccionDatos", leyAceptada); // NUEVO CAMPO PARA FRONTEND
             data.put("status", "INFOUSEROK");
 
             allDataList.add(data);
@@ -140,7 +143,6 @@ public class DashboardService {
             return new ResponseEntity<>(response, HttpStatus.OK);
 
         } catch (Exception e) {
-
             Map<String, Object> err = new HashMap<>();
             err.put("message", "Error interno del servidor.");
             err.put("status", "ERROR001");
@@ -156,10 +158,7 @@ public class DashboardService {
     }
 
 
-
-
-
-    public ResponseEntity<Map<String, Object>> inforCtaDepos(HttpServletRequest request,Authentication authentication) {
+    public ResponseEntity<Map<String, Object>> inforCtaDepos(HttpServletRequest request, Authentication authentication) {
         Map<String, Object> response = new HashMap<>();
         List<Map<String, Object>> allDataList = new ArrayList<>();
         try {
@@ -199,7 +198,7 @@ public class DashboardService {
 
             String cliacUsuRuc = authentication.getName();
             String clienIdenti = jwtUtil.getrucIdenClie(token);
-            String numSocio    = jwtUtil.getcodcliente(token);
+            String numSocio = jwtUtil.getcodcliente(token);
 
             if (cliacUsuRuc == null || clienIdenti == null || numSocio == null) {
 
@@ -229,7 +228,7 @@ public class DashboardService {
             if (datosCodigos.isEmpty()) {
                 Map<String, Object> err = new HashMap<>();
                 err.put("status", "ERROR003");
-                err.put("errors", "No se encontraron datos del socio."+cliacUsuRuc+clienIdenti);
+                err.put("errors", "No se encontraron datos del socio." + cliacUsuRuc + clienIdenti);
                 allDataList.add(err);
 
                 response.put("AllData", allDataList);
@@ -316,7 +315,6 @@ public class DashboardService {
             return new ResponseEntity<>(response, HttpStatus.OK);
 
         } catch (Exception e) {
-
             Map<String, Object> err = new HashMap<>();
             err.put("message", "Error interno del servidor.");
             err.put("status", "ERROR001");
@@ -332,9 +330,7 @@ public class DashboardService {
     }
 
 
-
-
-    public ResponseEntity<Map<String, Object>> ctaPropiasTrans(HttpServletRequest request,DashboardUtils dashboardUtils,Authentication authentication) {
+    public ResponseEntity<Map<String, Object>> ctaPropiasTrans(HttpServletRequest request, DashboardUtils dashboardUtils, Authentication authentication) {
 
         Map<String, Object> response = new HashMap<>();
         List<Map<String, Object>> allDataList = new ArrayList<>();
@@ -345,7 +341,7 @@ public class DashboardService {
 
             String cliacUsuRuc = jwtUtil.getrucIdenClie(token);
             String clienIdenti = jwtUtil.getrucIdenClie(token);
-            String numSocio    = jwtUtil.getcodcliente(token);
+            String numSocio = jwtUtil.getcodcliente(token);
 
             if (token == null) {
                 Map<String, Object> err = new HashMap<>();
@@ -443,7 +439,7 @@ public class DashboardService {
                 cuenta.put("descrCta", row[2].toString().trim());
                 cuenta.put("estadoCta", row[3].toString().trim());
 
-                cuenta.put("saldoCta",  obtenerSaldoDisponible(row[1].toString().trim()));
+                cuenta.put("saldoCta", obtenerSaldoDisponible(row[1].toString().trim()));
 
                 cuentas.add(cuenta);
             }
@@ -454,13 +450,10 @@ public class DashboardService {
             return new ResponseEntity<>(response, HttpStatus.OK);
 
         } catch (Exception e) {
-            response.put("message", "Error interno del servidor.");
-            response.put("status", "ERROR003");
-            response.put("errors", e.getMessage());
-            return new ResponseEntity<>(response, HttpStatus.INTERNAL_SERVER_ERROR);
+            //kguanoluisa, [Se mantiene RuntimeException agregando mensaje descriptivo][N/A][22/05/2026]
+            throw new RuntimeException("Error interno al consultar cuentas propias: " + e.getMessage(), e);
         }
     }
-
 
 
 //ver informacion de terceros
@@ -489,7 +482,8 @@ public class DashboardService {
             if (token != null && !token.isBlank()) {
                 try {
                     numIdentificacionToken = jwtUtil.getrucIdenClie(token);
-                } catch (Exception ignored) {}
+                } catch (Exception ignored) {
+                }
             }
 
             if ((numIdentificacion == null || numIdentificacion.isBlank()) &&
@@ -505,30 +499,29 @@ public class DashboardService {
 
             if (codCta == null || codCta.isBlank()) {
                 response.put("status", "ERROR002");
-                response.put("message", "No se recibió el número de cuenta." +codCta );
+                response.put("message", "No se recibió el número de cuenta." + codCta);
                 return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
             }
 
 
-
             String sqlCuentas = """
-            SELECT ctadp_cod_clien,
-                ofi.ofici_nom_ofici AS oficina,
-                ctadp_cod_depos,
-                ctadp_cod_ctadp,
-                dp.depos_des_depos,
-                ctadp_cod_ectad
-            FROM cnxctadp 
-            JOIN cnxofici ofi ON ofi.ofici_cod_ofici = ctadp_cod_ofici
-            JOIN cnxdepos dp ON dp.depos_cod_depos = ctadp_cod_depos 
-                             AND dp.depos_cod_ofici = ctadp_cod_ofici
-                             AND dp.depos_ctr_opera = 0
-                             AND dp.depos_cod_moned = 2
-            WHERE ctadp_cod_ctadp = :numcta
-              AND ctadp_cod_ectad IN (1,4)
-              AND ctadp_cod_depos IN (1,3)
-            ORDER BY depos_cod_depos
-        """;
+                        SELECT ctadp_cod_clien,
+                            ofi.ofici_nom_ofici AS oficina,
+                            ctadp_cod_depos,
+                            ctadp_cod_ctadp,
+                            dp.depos_des_depos,
+                            ctadp_cod_ectad
+                        FROM cnxctadp 
+                        JOIN cnxofici ofi ON ofi.ofici_cod_ofici = ctadp_cod_ofici
+                        JOIN cnxdepos dp ON dp.depos_cod_depos = ctadp_cod_depos 
+                                         AND dp.depos_cod_ofici = ctadp_cod_ofici
+                                         AND dp.depos_ctr_opera = 0
+                                         AND dp.depos_cod_moned = 2
+                        WHERE ctadp_cod_ctadp = :numcta
+                          AND ctadp_cod_ectad IN (1,4)
+                          AND ctadp_cod_depos IN (1,3)
+                        ORDER BY depos_cod_depos
+                    """;
 
             Query qCuentas = entityManager.createNativeQuery(sqlCuentas);
             qCuentas.setParameter("numcta", codCta);
@@ -541,22 +534,22 @@ public class DashboardService {
             for (Object[] r : rsCuentas) {
                 Map<String, Object> cta = new LinkedHashMap<>();
                 codClien = Integer.parseInt(rsCuentas.get(0)[0].toString().trim());
-                cta.put("codDepos",    r[2] != null ? r[2].toString().trim() : "");
-                cta.put("numCuenta",   r[3] != null ? r[3].toString().trim() : "");
+                cta.put("codDepos", r[2] != null ? r[2].toString().trim() : "");
+                cta.put("numCuenta", r[3] != null ? r[3].toString().trim() : "");
                 cta.put("descripcion", r[4] != null ? r[4].toString().trim() : "");
-                cta.put("estadoCta",   r[5] != null ? r[5].toString().trim() : "");
+                cta.put("estadoCta", r[5] != null ? r[5].toString().trim() : "");
                 cuentas.add(cta);
             }
 
             String sqlCliente = """
-            SELECT
-                TRIM(clien_ape_clien) || ' ' || TRIM(clien_nom_clien) AS nombre_completo,
-                ofici_nom_ofici AS oficina
-            FROM cnxclien, cnxofici
-            WHERE clien_cod_clien = :txtidebenef
-              AND ofici_cod_empre = clien_cod_empre
-              AND ofici_cod_ofici = clien_cod_ofici
-        """;
+                        SELECT
+                            TRIM(clien_ape_clien) || ' ' || TRIM(clien_nom_clien) AS nombre_completo,
+                            ofici_nom_ofici AS oficina
+                        FROM cnxclien, cnxofici
+                        WHERE clien_cod_clien = :txtidebenef
+                          AND ofici_cod_empre = clien_cod_empre
+                          AND ofici_cod_ofici = clien_cod_ofici
+                    """;
 
             Query qCliente = entityManager.createNativeQuery(sqlCliente);
             qCliente.setParameter("txtidebenef", codClien);
@@ -567,7 +560,7 @@ public class DashboardService {
             if (!rsCliente.isEmpty()) {
                 Object[] row = rsCliente.get(0);
                 cliente.put("nombreCompleto", row[0] != null ? row[0].toString().trim() : "");
-                cliente.put("oficina",        row[1] != null ? row[1].toString().trim() : "");
+                cliente.put("oficina", row[1] != null ? row[1].toString().trim() : "");
             } else {
                 cliente.put("nombreCompleto", "");
                 cliente.put("oficina", "");
@@ -587,7 +580,6 @@ public class DashboardService {
             return new ResponseEntity<>(response, HttpStatus.OK);
 
         } catch (Exception e) {
-
             Map<String, Object> error = new LinkedHashMap<>();
             error.put("status", "ERROR003");
             error.put("message", "Error interno del servidor.");
@@ -596,6 +588,7 @@ public class DashboardService {
             return new ResponseEntity<>(error, HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
+
     public ResponseEntity<Map<String, Object>> ultimosMovimientos(HttpServletRequest request, Authentication authentication) {
 
         Map<String, Object> response = new HashMap<>();
@@ -605,7 +598,7 @@ public class DashboardService {
 
             String cliacUsuVirtu = authentication.getName();
             String clienIdenti = jwtUtil.getrucIdenClie(token);
-            String numSocio    = jwtUtil.getcodcliente(token);
+            String numSocio = jwtUtil.getcodcliente(token);
 
             if (numSocio == null || numSocio.isBlank()) {
                 response.put("status", "ERROR004");
@@ -614,15 +607,15 @@ public class DashboardService {
             }
 
             String sql = """
-                SELECT andmovrec_descripcion,
-                    andmovrec_ctadestino,
-                    andmovrec_valor,
-                    andmovrec_fecha,
-                    andmovrec_titularctadestino
-                FROM andmovrec
-                WHERE andmovrec_codcliente = :numSocio
-                ORDER BY andmovrec_fecha DESC
-             """;
+                       SELECT andmovrec_descripcion,
+                           andmovrec_ctadestino,
+                           andmovrec_valor,
+                           andmovrec_fecha,
+                           andmovrec_titularctadestino
+                       FROM andmovrec
+                       WHERE andmovrec_codcliente = :numSocio
+                       ORDER BY andmovrec_fecha DESC
+                    """;
             Query query = entityManager.createNativeQuery(sql);
             query.setParameter("numSocio", numSocio);
 
@@ -659,7 +652,6 @@ public class DashboardService {
             return new ResponseEntity<>(response, HttpStatus.OK);
 
         } catch (Exception e) {
-
             Map<String, Object> error = new HashMap<>();
             error.put("message", "Error interno del servidor");
             error.put("status", "ERROR001");
@@ -677,12 +669,12 @@ public class DashboardService {
             String token = Obtenertoken.desdeCookie(request);
 
             String cliacUsuVirtu = authentication.getName();
-            String clienIdenti   = jwtUtil.getrucIdenClie(token);
-            String numSocio      = jwtUtil.getcodcliente(token);
+            String clienIdenti = jwtUtil.getrucIdenClie(token);
+            String numSocio = jwtUtil.getcodcliente(token);
 
 
             LocalDate fechaInicio = dashboardUtils.getFechaInicio();
-            LocalDate fechaFin    = dashboardUtils.getFechaFin();
+            LocalDate fechaFin = dashboardUtils.getFechaFin();
             String codCta = dashboardUtils.getCodCta();
 
             if (numSocio == null || numSocio.isBlank()) {
@@ -692,12 +684,12 @@ public class DashboardService {
             }
 
             String sql = """
-                SELECT dmcta_cod_tmovi, dmcta_val_dmcta, dmcta_fec_mctad, mv.tmovi_des_tmovi
-                       FROM cnxdmcta
-                       JOIN cnxtmovi mv ON mv.tmovi_cod_tmovi = dmcta_cod_tmovi
-                       WHERE DATE(dmcta_fec_mctad) BETWEEN :fechaInicio AND :fechaFin
-                         AND dmcta_cod_ctadp = :codCta
-             """;
+                       SELECT dmcta_cod_tmovi, dmcta_val_dmcta, dmcta_fec_mctad, mv.tmovi_des_tmovi
+                              FROM cnxdmcta
+                              JOIN cnxtmovi mv ON mv.tmovi_cod_tmovi = dmcta_cod_tmovi
+                              WHERE DATE(dmcta_fec_mctad) BETWEEN :fechaInicio AND :fechaFin
+                                AND dmcta_cod_ctadp = :codCta
+                    """;
             Query query = entityManager.createNativeQuery(sql);
             query.setParameter("codCta", codCta);
             query.setParameter("fechaInicio", fechaInicio);
@@ -732,7 +724,6 @@ public class DashboardService {
             return new ResponseEntity<>(response, HttpStatus.OK);
 
         } catch (Exception e) {
-
             Map<String, Object> error = new HashMap<>();
             error.put("message", "Error interno del servidor");
             error.put("status", "ERROR001");
@@ -741,10 +732,6 @@ public class DashboardService {
             return new ResponseEntity<>(error, HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
-
-
-
-
 
 
     // PROCEDURE PARA SALDO
@@ -769,12 +756,96 @@ public class DashboardService {
             return valor != null ? valor.toString().trim() : "0.00";
 
         } catch (Exception e) {
-
+            //kguanoluisa, [Se agregó comentario a RuntimeException manteniendo el mensaje original][N/A][22/05/2026]
             throw new RuntimeException("Error al obtener el saldo disponible: " + e.getMessage(), e);
         }
     }
 
     private String formatMoneda(double monto) {
         return String.format("%.2f", monto);
+    }
+
+    // [kguanoluisa] - Creación de API para registrar la aceptación de ley de protección de datos mediante INSERT SELECT - 12/05/2026
+    @Transactional
+    public ResponseEntity<Map<String, Object>> aceptarPoliticaDatos(HttpServletRequest request, Authentication authentication) {
+        Map<String, Object> response = new HashMap<>();
+        List<Map<String, Object>> allDataList = new ArrayList<>();
+
+        try {
+            String token = Obtenertoken.desdeCookie(request);
+
+            if (token == null || authentication == null || !authentication.isAuthenticated()) {
+                Map<String, Object> err = new HashMap<>();
+                err.put("status", "AA028");
+                err.put("errors", "No autorizado o sesión expirada.");
+                allDataList.add(err);
+                response.put("success", false);
+                response.put("AllData", allDataList);
+                return new ResponseEntity<>(response, HttpStatus.UNAUTHORIZED);
+            }
+
+            String numSocio = jwtUtil.getcodcliente(token);
+
+            if (numSocio == null || numSocio.isBlank()) {
+                Map<String, Object> err = new HashMap<>();
+                err.put("status", "ERRORPOL001");
+                err.put("errors", "Identificación de cliente incompleta en Token.");
+                allDataList.add(err);
+                response.put("AllData", allDataList);
+                return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+            }
+
+            // Verificar existencia previa para no duplicar datos
+            String sqlVerifica = "SELECT COUNT(*) FROM andaudlpdf WHERE audlpdf_cod_canal = 8 AND audlpdf_cod_clien = :codclien";
+            Query queryVer = entityManager.createNativeQuery(sqlVerifica);
+            queryVer.setParameter("codclien", numSocio);
+            Number resultExist = (Number) queryVer.getSingleResult();
+
+            if (resultExist.intValue() > 0) {
+                Map<String, Object> info = new HashMap<>();
+                info.put("status", "OK");
+                info.put("message", "Políticas ya registradas previamente.");
+                allDataList.add(info);
+                response.put("success", true);
+                response.put("AllData", allDataList);
+                return new ResponseEntity<>(response, HttpStatus.OK);
+            }
+
+            // Registrar Aceptacion: Usamos SELECT anidado para extraer usuario y oficina de cnxclien
+            String sqlInsert = """
+                        INSERT INTO andaudlpdf (audlpdf_cod_canal, audlpdf_cod_clien, audlpdf_std_audlpdf, 
+                                               audlpdf_dsmal_audlpdf, audlpdf_fec_audlpdf, audlpdf_cod_usuar, audlpdf_cod_ofici)
+                        SELECT 8, clien_cod_clien, 1, 1, TODAY, clien_cod_usuar, clien_cod_ofici
+                        FROM cnxclien
+                        WHERE clien_cod_clien = :codclien
+                    """;
+
+            Query queryInsert = entityManager.createNativeQuery(sqlInsert);
+            queryInsert.setParameter("codclien", numSocio);
+
+            int rowsAffected = queryInsert.executeUpdate();
+
+            if (rowsAffected > 0) {
+                response.put("success", true);
+                Map<String, Object> dataOk = new HashMap<>();
+                dataOk.put("status", "ACEPTADO_OK");
+                dataOk.put("message", "Aceptación de ley de datos registrada con éxito.");
+                allDataList.add(dataOk);
+                response.put("AllData", allDataList);
+                return new ResponseEntity<>(response, HttpStatus.OK);
+            } else {
+                response.put("success", false);
+                Map<String, Object> dataErr = new HashMap<>();
+                dataErr.put("status", "ERRORINSERT");
+                dataErr.put("errors", "No se encontró el registro del socio en cnxclien para registrar la aceptación.");
+                allDataList.add(dataErr);
+                response.put("AllData", allDataList);
+                return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+            }
+
+        } catch (Exception e) {
+            //kguanoluisa, [Se relanza excepcion para que @Transactional haga rollback del INSERT en andaudlpdf][][2026-05-21]
+            throw new RuntimeException("Error al registrar la aceptación: " + e.getMessage(), e);
+        }
     }
 }

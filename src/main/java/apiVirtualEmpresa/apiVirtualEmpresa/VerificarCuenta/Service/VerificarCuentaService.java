@@ -1,4 +1,5 @@
 package apiVirtualEmpresa.apiVirtualEmpresa.VerificarCuenta.Service;
+
 import apiVirtualEmpresa.apiVirtualEmpresa.VerificarCuenta.dto.VerificarCuentaUtils;
 import apiVirtualEmpresa.apiVirtualEmpresa.config.JwtUtil;
 import apiVirtualEmpresa.apiVirtualEmpresa.config.Obtenertoken;
@@ -18,6 +19,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+
 @Service
 @Transactional
 public class VerificarCuentaService {
@@ -107,12 +109,8 @@ public class VerificarCuentaService {
             return new ResponseEntity<>(response, HttpStatus.OK);
 
         } catch (Exception e) {
-            response.put("success", false);
-            response.put("status", "ERROR");
-            response.put("message", "Error interno del servidor");
-            response.put("error", e.getMessage());
-
-            return new ResponseEntity<>(response, HttpStatus.INTERNAL_SERVER_ERROR);
+            //kguanoluisa, [Se reemplazo la respuesta JSON de error por RuntimeException manteniendo el mensaje original][N/A][22/05/2026]
+            throw new RuntimeException("Error interno del servidor: " + e.getMessage(), e);
         }
     }
 }

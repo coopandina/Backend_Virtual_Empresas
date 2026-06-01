@@ -36,23 +36,44 @@ public class FirmaUtils {
         this.codigoEmpresa = txtcodigoEmpresa;
     }
 
-    public String getTxtcodofici() { return txtcodofici; }
-    public void setTxtcodofici(String txtcodofici) { this.txtcodofici = txtcodofici; }
+    public String getTxtcodofici() {
+        return txtcodofici;
+    }
 
-    public String getTxtcodedocu() { return txtcodedocu; }
-    public void setTxtcodedocu(String txtcodedocu) { this.txtcodedocu = txtcodedocu; }
+    public void setTxtcodofici(String txtcodofici) {
+        this.txtcodofici = txtcodofici;
+    }
 
-    public String getDtpfecdesde() { return dtpfecdesde; }
-    public void setDtpfecdesde(String dtpfecdesde) { this.dtpfecdesde = dtpfecdesde; }
+    public String getTxtcodedocu() {
+        return txtcodedocu;
+    }
 
-    public String getDtpfechasta() { return dtpfechasta; }
-    public void setDtpfechasta(String dtpfechasta) { this.dtpfechasta = dtpfechasta; }
+    public void setTxtcodedocu(String txtcodedocu) {
+        this.txtcodedocu = txtcodedocu;
+    }
+
+    public String getDtpfecdesde() {
+        return dtpfecdesde;
+    }
+
+    public void setDtpfecdesde(String dtpfecdesde) {
+        this.dtpfecdesde = dtpfecdesde;
+    }
+
+    public String getDtpfechasta() {
+        return dtpfechasta;
+    }
+
+    public void setDtpfechasta(String dtpfechasta) {
+        this.dtpfechasta = dtpfechasta;
+    }
 
 
     private static final DateTimeFormatter INPUT = DateTimeFormatter.ofPattern("dd/MM/yyyy");
     private static final DateTimeFormatter DB = DateTimeFormatter.ofPattern("yyyy-MM-dd");
 
-    private FirmaUtils() {}
+    private FirmaUtils() {
+    }
 
     public static String leftPad(String value, int length) {
         return String.format("%1$" + length + "s", value).replace(' ', '0');
@@ -170,10 +191,10 @@ public class FirmaUtils {
     //generar xml
     public static String generaXmlDocumento(int sriComprobante, String infoTributaria, String infoDocumento,
                                             String detalleDocumento, String infoAdicional, String claveAcceso) throws Exception {
-        infoTributaria   = limpiarTextoSri(infoTributaria);
-        infoDocumento    = limpiarTextoSri(infoDocumento);
+        infoTributaria = limpiarTextoSri(infoTributaria);
+        infoDocumento = limpiarTextoSri(infoDocumento);
         detalleDocumento = limpiarTextoSri(detalleDocumento);
-        infoAdicional    = limpiarTextoSri(infoAdicional);
+        infoAdicional = limpiarTextoSri(infoAdicional);
 
 
         String etiquetaDoc = "factura";

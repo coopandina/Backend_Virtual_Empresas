@@ -22,12 +22,12 @@ public class NominasUtils {
     private String ctaDestino;
     private String ctaOrigen;
     private String monto;
-    private  String codbanco;
+    private String codbanco;
     private String codTempDirec;
     private String codTempExter;
     private String nombresDes;
     private String nombresBenef;
-    private  String cedulaBenef;
+    private String cedulaBenef;
     private Integer tipoCuenta;
     private BigDecimal valTransfer;
     private String ipterminal;
@@ -36,7 +36,6 @@ public class NominasUtils {
 
     @JsonFormat(pattern = "yyyy-MM-dd")
     private LocalDate fechaFin;
-
 
 
 }

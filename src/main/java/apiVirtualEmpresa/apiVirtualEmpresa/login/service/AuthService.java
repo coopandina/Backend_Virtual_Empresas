@@ -1,11 +1,14 @@
 package apiVirtualEmpresa.apiVirtualEmpresa.login.service;
+
 import apiVirtualEmpresa.apiVirtualEmpresa.config.JwtUtil;
 import apiVirtualEmpresa.apiVirtualEmpresa.config.Obtenertoken;
-import sms.SendSMS;
-import envioCorreo.sendEmail;
-import apiVirtualEmpresas.virtualempresas.libs.Libs;
 import apiVirtualEmpresa.apiVirtualEmpresa.login.dto.CodSegurdiad;
 import apiVirtualEmpresa.apiVirtualEmpresa.login.dto.UserCredentials;
+import apiVirtualEmpresas.virtualempresas.libs.Libs;
+import envioCorreo.sendEmail;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
+import jakarta.persistence.Query;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -13,14 +16,11 @@ import libs.PassSecure;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
-
-import jakarta.persistence.*;
+import sms.SendSMS;
 
 import java.util.*;
 
@@ -47,7 +47,6 @@ public class AuthService {
             Map<String, Object> response = new HashMap<>();
             List<Map<String, Object>> allDataList = new ArrayList<>();
             HttpStatus status = HttpStatus.OK;
-
 
 
             String mensajeValBlancos = validarCredencialesBlanco(request);
@@ -88,14 +87,14 @@ public class AuthService {
                 return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
             }
 
-            List<Object[]> resultados =valida_usuario_id(request.getClienIdeClien(), request.getUsvcoIdeUsv());
+            List<Object[]> resultados = valida_usuario_id(request.getClienIdeClien(), request.getUsvcoIdeUsv());
 
             if (!resultados.isEmpty()) {
 
                 String rucIdenClie = request.getClienIdeClien();
                 String ideClieUsu = request.getUsvcoIdeUsv();
                 String pwsUsoClie = request.getUsvcoPswd();
-                Map<String, Object> validacion = valida_LoginBDD(rucIdenClie, ideClieUsu,pwsUsoClie, accesoDipTermi);
+                Map<String, Object> validacion = valida_LoginBDD(rucIdenClie, ideClieUsu, pwsUsoClie, accesoDipTermi);
                 if (Boolean.TRUE.equals(validacion.get("success"))) {
                     String cod_cliente = (String) validacion.get("CODCLIENTE");
 
@@ -103,8 +102,22 @@ public class AuthService {
                     allData.put("message", "Acceso concedido.");
                     allData.put("status", "AA3684");
 
-                    // 1) Token generado en valida_LoginBDD
-                    String token = jwtUtil.generateToken(request.getUsvcoIdeUsv(),request.getClienIdeClien(),cod_cliente);
+                    // [kguanoluisa] - Generar SessionId único e insertar registro en pendiente (0) - 12/05/2026
+                    String sessionId = java.util.UUID.randomUUID().toString();
+
+                    String sqlRegSession = "INSERT INTO andctrlvirlogin (ctrlvirlogin_ide_virtual, ctrlvirlogin_user_virtual, " +
+                            "ctrlvirlogin_mac_virtual, ctrlvirlogin_cod_temporal, ctrlvirlogin_ip_login, " +
+                            "ctrlvirlogin_fecha_virtual, ctrlvirlogin_ctrl_virtual) " +
+                            "VALUES (:ide, :user, ' ', :uuid, :ip, CURRENT, 0)";
+                    Query querySession = entityManager.createNativeQuery(sqlRegSession);
+                    querySession.setParameter("ide", request.getClienIdeClien());
+                    querySession.setParameter("user", request.getUsvcoIdeUsv());
+                    querySession.setParameter("uuid", sessionId);
+                    querySession.setParameter("ip", accesoDipTermi);
+                    querySession.executeUpdate();
+
+                    // 1) Token generado incluyendo el sessionId
+                    String token = jwtUtil.generateToken(request.getUsvcoIdeUsv(), request.getClienIdeClien(), cod_cliente, sessionId);
 
                     // 2) Crear Cookie HttpOnly (modo local)
                     Cookie cookie = new Cookie("jwt", token);
@@ -147,7 +160,7 @@ public class AuthService {
                 }
                 allDataList.add(allData);
                 response.put("AllData", allDataList);
-            }else{
+            } else {
                 allData.put("message", "Por favor, revise que la informacion ingresada sea la correcta, ruc o identificacion ");
                 allData.put("status", "AA3684");
                 allData.put("errors", "Credenciales incorrectas");
@@ -161,28 +174,44 @@ public class AuthService {
         }
     }
 
-    public ResponseEntity<Map<String,Object>> logout() {
+    // [kguanoluisa] - Cierre lógico de sesión en base de datos y expiración de cookies - 12/05/2026
+    @Transactional
+    public ResponseEntity<Map<String, Object>> logout(HttpServletRequest request, HttpServletResponse responseServe) {
         Map<String, Object> allData = new HashMap<>();
         Map<String, Object> response = new HashMap<>();
         List<Map<String, Object>> allDataList = new ArrayList<>();
 
-        ResponseCookie killAccess = ResponseCookie.from("access_token","")
-                .httpOnly(true).secure(false).sameSite("Lax").path("/").maxAge(0).build();
-        ResponseCookie killRefresh = ResponseCookie.from("refresh_token","")
-                .httpOnly(true).secure(false).sameSite("Lax").path("/auth").maxAge(0).build();
+        try {
+            String token = Obtenertoken.desdeCookie(request);
+            if (token != null) {
+                String sessionId = jwtUtil.getSessionIdFromToken(token);
+                if (sessionId != null) {
+                    String sqlLogout = "UPDATE andctrlvirlogin SET ctrlvirlogin_ctrl_virtual = 0 WHERE ctrlvirlogin_cod_temporal = :uuid";
+                    Query qLog = entityManager.createNativeQuery(sqlLogout);
+                    qLog.setParameter("uuid", sessionId);
+                    qLog.executeUpdate();
+                }
+            }
+        } catch (Exception e) {
+            //kguanoluisa, [Se relanza excepcion para que @Transactional haga rollback del UPDATE][][2026-05-21]
+            throw new RuntimeException("Error en logout al actualizar estado: " + e.getMessage(), e);
+        }
 
-        allData.put("message", "Sesión cerrada");
+        Cookie cookie = new Cookie("jwt", null);
+        cookie.setHttpOnly(true);
+        cookie.setSecure(false);
+        cookie.setPath("/");
+        cookie.setMaxAge(0);
+        responseServe.addCookie(cookie);
+
+        allData.put("message", "Sesión cerrada con éxito.");
         allData.put("status", "LO00");
         allDataList.add(allData);
         response.put("AllData", allDataList);
+        response.put("success", true);
 
-        return ResponseEntity.ok()
-                .header("Set-Cookie", killAccess.toString())
-                .header("Set-Cookie", killRefresh.toString())
-                .body(response);
+        return new ResponseEntity<>(response, HttpStatus.OK);
     }
-
-
 
 
     public String validarCredencialesBlanco(UserCredentials request) {
@@ -200,7 +229,7 @@ public class AuthService {
         return null;
     }
 
-    public String usarioNoSerCorreo(UserCredentials request){
+    public String usarioNoSerCorreo(UserCredentials request) {
         String regexCorreo = "^[\\w-]+(?:\\.[\\w-]+)*@[\\w-]+(?:\\.[\\w-]+)+$";
         String ideruc = request.getClienIdeClien();
         String ideclien = request.getUsvcoIdeUsv();
@@ -213,6 +242,7 @@ public class AuthService {
         }
         return null;
     }
+
     public List<Object[]> valida_usuario_id(String ideruc, String ideusu) {
 
         String sql = "SELECT clien_ide_clien,usvco_psw_usvco,clien_cod_ofici,usvco_ctr_estad,usvco_ctr_bloq " +
@@ -228,11 +258,12 @@ public class AuthService {
 
         return results;
     }
+
     /**
      * Funcion para validar Login con LA BDD
      */
 
-    public Map<String, Object> valida_LoginBDD(String  rudIdenClie, String ideClieUsu,String pwsUsoClie, String accesoDipTermi) {
+    public Map<String, Object> valida_LoginBDD(String rudIdenClie, String ideClieUsu, String pwsUsoClie, String accesoDipTermi) {
         Map<String, Object> response = new HashMap<>();
         try {
             // Consulta para verificar usuario y contraseña
@@ -274,7 +305,17 @@ public class AuthService {
 
                     PassSecure passSecure = new PassSecure();
                     clienWwwPswrd = clienWwwPswrd.replace("\"", "");
-                    String passDec = passSecure.decryptPassword(clienWwwPswrd);
+                    String passDec = null;
+                    try {
+                        // [kguanoluisa] - Capturar errores de codificación/desencriptación de contraseña (evitar caídas por passwords corruptos) - 12/05/2026
+                        passDec = passSecure.decryptPassword(clienWwwPswrd);
+                    } catch (Exception ex) {
+                        response.put("success", false);
+                        response.put("message", "Error en la codificación o desencriptación de la contraseña almacenada.");
+                        response.put("status", "AAERRCODIF");
+                        //response.put("errors", "Fallo de descifrado interno: " + ex.getMessage());
+                        return response;
+                    }
 
                     if (passDec != null) {
                         passDec = passDec.trim().replace("\"", ""); // elimina comillas dobles
@@ -302,22 +343,38 @@ public class AuthService {
                     String clienCodClie1 = row10[1].toString().trim();
 
 
-
-
                     if (cliacUsuVirtu.trim().equals(rudIdenClie.trim()) &&
-                            passDec.trim().equals(pwsUsoClie.trim()) && ideClieUsu.trim().equals(clienIdeVirtu.trim()) ) {
+                            passDec.trim().equals(pwsUsoClie.trim()) && ideClieUsu.trim().equals(clienIdeVirtu.trim())) {
 
 
                         intentosRealizados = 0;
                         if (!results1.isEmpty()) {
                             if ("0".equals(cliacBloq.trim()) || "0".equals(clien_estado.trim())) {
                                 response.put("success", false);
-                                response.put("message", "El usuario está bloqueado o no está activo." );
+                                response.put("message", "El usuario está bloqueado o no está activo.");
                                 response.put("status", "AA1812");
                                 response.put("errors", "Usuario bloqueado.");
                                 return response;
-                            }
-                            else{
+                            } else {
+                                // [kguanoluisa] - Bloquear si ya existe una sesión activa hace menos de 15 min - 12/05/2026
+                                String sqlCheckSesion = "SELECT COUNT(*) FROM andctrlvirlogin " +
+                                        "WHERE ctrlvirlogin_ide_virtual = :ide " +
+                                        "AND ctrlvirlogin_user_virtual = :user " +
+                                        "AND ctrlvirlogin_ctrl_virtual = 1 " +
+                                        "AND ctrlvirlogin_fecha_virtual > CURRENT - INTERVAL(15) MINUTE TO MINUTE";
+                                Query qCheck = entityManager.createNativeQuery(sqlCheckSesion);
+                                qCheck.setParameter("ide", rudIdenClie);
+                                qCheck.setParameter("user", ideClieUsu);
+                                Number active = (Number) qCheck.getSingleResult();
+
+                                if (active.intValue() > 0) {
+                                    response.put("success", false);
+                                    response.put("message", "Ya cuenta con una sesión activa en otra ventana o dispositivo.");
+                                    response.put("status", "AASESIONACTIVA");
+                                    response.put("errors", "Sesión simultánea denegada.");
+                                    return response;
+                                }
+
                                 String sqlDatosCorreo = "select clien_ape_clien,clien_nom_clien ,usvco_ema_usvco, " +
                                         "usvco_tlf_usvco, usvco_ide_usvco,clien_cod_clien  from cnxclien, andusvco where clien_ide_clien=:rudIdenClie " +
                                         "and usvco_ide_usvco=:ideClieUsu ";
@@ -333,18 +390,17 @@ public class AuthService {
                                     String clienNumero = row2[3].toString().trim();
                                     String clienCedula = row2[4].toString().trim();
                                     String clienCodClie = row2[5].toString().trim();
-                                   // System.out.println("Consulta BDD= APELLIDOS: " + clienApellidos + " NOMBRES: " + clienNombres + " EMAIL: " + clienEmail + " CELULAR " + clienNumero);
+                                    // System.out.println("Consulta BDD= APELLIDOS: " + clienApellidos + " NOMBRES: " + clienNombres + " EMAIL: " + clienEmail + " CELULAR " + clienNumero);
                                     Libs fechaHoraService = new Libs(entityManager);
 
                                     String FechaIngresoLogin = fechaHoraService.obtenerFechaYHora();
-                                //    System.out.println(FechaIngresoLogin);
+                                    //    System.out.println(FechaIngresoLogin);
 
                                     String tokenTemp = codigoAleatorioTemp();
 
 
-
                                     SendSMS smsCodigoTemp = new SendSMS();
-                                    smsCodigoTemp.sendSecurityCodeSMS(clienNumero,"1150", tokenTemp, "Iniciar Sesion",FechaIngresoLogin);
+                                    smsCodigoTemp.sendSecurityCodeSMS(clienNumero, "1150", tokenTemp, "Iniciar Sesion", FechaIngresoLogin);
                                     sendEmail enviaCorreoToken = new sendEmail();
                                     tokenExpirationService.programarExpiracionToken(rudIdenClie, tokenTemp, "8");
                                     enviaCorreoToken.sendEmailTokenTemp(clienApellidos, clienNombres, FechaIngresoLogin, clienEmail, tokenTemp);
@@ -356,7 +412,7 @@ public class AuthService {
 
                                     String sqlInsertToken = "INSERT INTO vircodaccess (codaccess_cedula, codaccess_usuario, codaccess_codigo_temporal, codsms_codigo, codaccess_estado, codaccess_fecha) VALUES (:codaccess_cedula, :codaccess_usuario, :codaccess_codigo_temporal, :codsms_codigo, :codaccess_estado, :codaccess_fecha)";
                                     Query resultInsertTokenAcceso = entityManager.createNativeQuery(sqlInsertToken);
-                                    resultInsertTokenAcceso.setParameter("codaccess_cedula",  cliacUsuVirtu);
+                                    resultInsertTokenAcceso.setParameter("codaccess_cedula", cliacUsuVirtu);
                                     resultInsertTokenAcceso.setParameter("codaccess_usuario", clienCedula);
                                     resultInsertTokenAcceso.setParameter("codaccess_codigo_temporal", tokenTemp);
                                     resultInsertTokenAcceso.setParameter("codsms_codigo", 8);
@@ -365,7 +421,7 @@ public class AuthService {
                                     resultInsertTokenAcceso.executeUpdate();
                                     tokenExpirationService.programarExpiracionToken(clienCedula, tokenTemp, "8");
 
-                                                                      String accesoMacTermi = " ";
+                                    String accesoMacTermi = " ";
                                     Libs fechaHoraServicee = new Libs(entityManager);
                                     String accesoFecAcces = fechaHoraServicee.obtenerFechaYHora();
                                     String accesoCodAcces = generarNumberoSerial(1000000, 9999999);
@@ -385,7 +441,7 @@ public class AuthService {
                                     resultInsertAcceso.setParameter("acceso_cod_tacce", accesoCodTacce);
                                     resultInsertAcceso.executeUpdate();
 
-                                   // String token = JwtUtil.generateToken(cliacUsuVirtu, clienCedula, clienCodClie);
+                                    // String token = JwtUtil.generateToken(cliacUsuVirtu, clienCedula, clienCodClie);
                                     response.put("success", true);
                                     response.put("message", "Inicio de sesión exitoso.");
                                     response.put("CODCLIENTE", clienCodClie);
@@ -398,7 +454,7 @@ public class AuthService {
                     } else {
                         intentosRealizados++;
 
-                        if(intentosRealizados >= 3) {
+                        if (intentosRealizados >= 3) {
                             String sqlBloqUser = "UPDATE andusvco SET usvco_ctr_bloq = :bloqueo WHERE usvco_ide_clien = :rudIdenClie AND usvco_ide_usvco = :ideClieUsu";
                             Query resultBloqUser = entityManager.createNativeQuery(sqlBloqUser);
                             resultBloqUser.setParameter("bloqueo", "0");
@@ -436,12 +492,8 @@ public class AuthService {
                                     System.out.println("No se encontró al usuario para bloquear.");
                                 }
                             } catch (Exception e) {
-                                System.err.println("Error al bloquear el usuario en la base de datos: " + e.getMessage());
-                                response.put("success", false);
-                                response.put("message", "Error al intentar bloquear el usuario.");
-                                response.put("status", "AA10");
-                                response.put("errors", e.getMessage());
-                                return response;
+                                //kguanoluisa, [Se relanza excepcion para que @Transactional haga rollback del UPDATE de bloqueo][][2026-05-21]
+                                throw new RuntimeException("Error al intentar bloquear el usuario en la base de datos: " + e.getMessage(), e);
                             }
                             response.put("success", false);
                             response.put("message", "Se alcanzó el límite de intentos.");
@@ -455,15 +507,12 @@ public class AuthService {
             response.put("success", false);
             response.put("message", "Credenciales incorrectas.");
             response.put("status", "AA12");
-            response.put("errors", "Contraseña incorrecta o usuario no encontrado." );
+            response.put("errors", "Contraseña incorrecta o usuario no encontrado.");
             return response;
 
         } catch (Exception e) {
-            response.put("success", false);
-            response.put("message", "Error interno en el servidor.");
-            response.put("status", "AA99");
-            response.put("errors", e.getMessage());
-            return response;
+            // [kguanoluisa] - Propagar la excepción original para evitar enmascaramiento por UnexpectedRollbackException y capturarla en GlobalExceptionHandler - 18/05/2026
+            throw new RuntimeException(e);
         }
     }
 
@@ -499,11 +548,11 @@ public class AuthService {
 
             String cliacUsuVirtu = authentication.getName();
             String rucIdenClie = jwtUtil.getrucIdenClie(token);
-            String numSocio    = jwtUtil.getcodcliente(token);
+            String numSocio = jwtUtil.getcodcliente(token);
 
             if (cliacUsuVirtu == null || rucIdenClie == null || numSocio == null) {
                 allData.put("message", "Datos del token incompletos");
-                allData.put("status", "AA022"  );
+                allData.put("status", "AA022");
                 allData.put("errors", "ERROR EN LA AUTENTICACIÓN");
                 allDataList.add(allData);
                 response.put("AllData", allDataList);
@@ -590,28 +639,16 @@ public class AuthService {
                             return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
                         }
 
-                        String ipIngresoLogin = codSeguridad.getIpterminal();
-
-
-                        Libs fechaHoraService = new Libs(entityManager);
-                        String FechaIngresoLogin = fechaHoraService.obtenerFechaYHora();
-
-
-                        SendSMS sms = new SendSMS();
-                        sms.sendVirtualAccessSMS(clienNumero, "1150", "VIRTUALCOP",FechaIngresoLogin);
-                        sendEmail enviarCorreo = new sendEmail();
-                        enviarCorreo.sendEmailInicioSesion(clienApellidos, clienNombres, FechaIngresoLogin, ipIngresoLogin, clienEmail);
-
                         allData.put("status", "AUTHO");
                         allData.put("des_tip_usvco", des_tip);
-                        allData.put("message", "Inicio de sesion exitoso!");
+                        allData.put("message", "Código verificado con éxito, pendiente términos y condiciones.");
                         allDataList.add(allData);
                         response.put("AllData", allDataList);
                         return new ResponseEntity<>(response, HttpStatus.OK);
                     }
 
                     intentosRealizadoTokenFallos = 0;
-                }else{
+                } else {
                     intentosRealizadoTokenFallos++;
                     if (intentosRealizadoTokenFallos >= 3) {
                         String sqlBloqUser = "UPDATE andusvco SET usvco_ctr_bloq = :bloqueo WHERE usvco_ide_clien = :rudIdenClie AND usvco_ide_usvco = :ideClieUsu";
@@ -636,7 +673,7 @@ public class AuthService {
                                     String clienEmail = row2[1].toString().trim();
                                     String IpIngreso = codSeguridad.getIpterminal();
                                     sendEmail emailBloq = new sendEmail();
-                                    emailBloq.sendEmailBloqueo("", clienNombres, FechaHora,clienEmail, IpIngreso );
+                                    emailBloq.sendEmailBloqueo("", clienNombres, FechaHora, clienEmail, IpIngreso);
 
                                     String accesoDipTermi = codSeguridad.getIpterminal();
                                     String accesoMacTermi = " ";
@@ -686,7 +723,6 @@ public class AuthService {
                                     }
 
 
-
                                     Map<String, Object> data = new HashMap<>();
                                     data.put("message", "Usuario bloqueado por exceder límite de intentos");
                                     data.put("status", "AA025");
@@ -699,10 +735,8 @@ public class AuthService {
                                 }
                             }
                         } catch (Exception e) {
-                            response.put("success", false);
-                            response.put("message", "Error al intentar bloquear el usuario");
-                            response.put("status", "AA024");
-                            status = HttpStatus.BAD_REQUEST;
+                            //kguanoluisa, [Se relanza excepcion para que @Transactional haga rollback del UPDATE/INSERT de bloqueo en validarCodSeguridad][][2026-05-21]
+                            throw new RuntimeException("Error al intentar bloquear el usuario: " + e.getMessage(), e);
                         }
                     } else {
                         response.put("success", false);
@@ -712,7 +746,7 @@ public class AuthService {
 
                     }
                 }
-            }else {
+            } else {
                 allData.put("status", "AA027");
                 allData.put("errors", "CODIGO TEMPORAL EXPIRADO, POR EXCEDER LOS 4 MINUTOS");
                 allDataList.add(allData);
@@ -721,17 +755,8 @@ public class AuthService {
             }
             return new ResponseEntity<>(response, status);
         } catch (Exception e) {
-            Map<String, Object> errorResponse = new HashMap<>();
-            Map<String, Object> errorData = new HashMap<>();
-            List<Map<String, Object>> errorList = new ArrayList<>();
-
-            errorData.put("message", "Error interno del servidor");
-            errorData.put("status", "ERROR");
-            errorData.put("errors", e.getMessage());
-            errorList.add(errorData);
-            errorResponse.put("AllData", errorList);
-
-            return new ResponseEntity<>(errorResponse, HttpStatus.INTERNAL_SERVER_ERROR);
+            //kguanoluisa, [Se relanza excepcion para que @Transactional haga rollback de los UPDATEs/INSERTs en validarCodSeguridad][][2026-05-21]
+            throw new RuntimeException("Error interno del servidor en validarCodSeguridad: " + e.getMessage(), e);
         }
     }
 
@@ -754,6 +779,122 @@ public class AuthService {
         int numeroAleatorio = 100000 + random.nextInt(900000); // Asegura 6 dígitos
         return String.valueOf(numeroAleatorio);
     }
+
+    public ResponseEntity<Map<String, Object>> aceptarTerminosCondiciones(HttpServletRequest request, Authentication authentication, Map<String, String> body) {
+        try {
+            Map<String, Object> allData = new HashMap<>();
+            Map<String, Object> response = new HashMap<>();
+            List<Map<String, Object>> allDataList = new ArrayList<>();
+
+            String token = Obtenertoken.desdeCookie(request);
+            if (token == null) {
+                response.put("success", false);
+                allData.put("status", "AA027");
+                allData.put("errors", "No autorizado: no fue posible generar el token de acceso.");
+                response.put("AllData", allDataList);
+                return new ResponseEntity<>(response, HttpStatus.UNAUTHORIZED);
+            }
+
+            if (authentication == null || !authentication.isAuthenticated()) {
+                response.put("success", false);
+                response.put("message", "No autorizado");
+                allData.put("status", "AA028");
+                allData.put("errors", "La sesión no es válida o ha expirado.");
+                response.put("AllData", allDataList);
+                return new ResponseEntity<>(response, HttpStatus.UNAUTHORIZED);
+            }
+
+            String cliacUsuVirtu = authentication.getName();
+            String rucIdenClie = jwtUtil.getrucIdenClie(token);
+            String numSocio = jwtUtil.getcodcliente(token);
+
+            if (cliacUsuVirtu == null || rucIdenClie == null || numSocio == null) {
+                allData.put("message", "Datos del token incompletos");
+                allData.put("status", "AA022");
+                allData.put("errors", "ERROR EN LA AUTENTICACIÓN");
+                allDataList.add(allData);
+                response.put("AllData", allDataList);
+                return new ResponseEntity<>(response, HttpStatus.UNAUTHORIZED);
+            }
+
+            // Obtener los datos del usuario para el SMS y Email
+            String sqlDatosCorreoIngreso = "SELECT clien_ape_clien, clien_nom_clien, usvco_ema_usvco, usvco_tlf_usvco, clien_ide_clien, clien_cod_clien, usvco_tip_usvco " +
+                    "FROM cnxclien, andusvco WHERE clien_ide_clien = :clienIdenti  " +
+                    "AND usvco_ide_usvco = :cliacUsuVirtu AND clien_ide_clien = usvco_ide_clien";
+            Query resulDatosCorreoIngreso = entityManager.createNativeQuery(sqlDatosCorreoIngreso);
+            resulDatosCorreoIngreso.setParameter("cliacUsuVirtu", cliacUsuVirtu);
+            resulDatosCorreoIngreso.setParameter("clienIdenti", rucIdenClie);
+
+            List<Object[]> results2 = resulDatosCorreoIngreso.getResultList();
+            if (results2.isEmpty()) {
+                allData.put("message", "Usuario no encontrado en la base de datos");
+                allData.put("status", "AA029");
+                allData.put("errors", "ERROR EN LA AUTENTICACIÓN");
+                allDataList.add(allData);
+                response.put("AllData", allDataList);
+                return new ResponseEntity<>(response, HttpStatus.NOT_FOUND);
+            }
+
+            Object[] row2 = results2.get(0);
+            String clienApellidos = row2[0].toString().trim();
+            String clienNombres = row2[1].toString().trim();
+            String clienEmail = row2[2].toString().trim();
+            String clienNumero = row2[3].toString().trim();
+
+            int tip_usvco = Integer.parseInt(row2[6].toString().trim());
+            String des_tip = (tip_usvco == 1) ? "AUTORIZADOR" : "OPERADOR";
+
+            String ipIngresoLogin = (body != null) ? body.get("ipterminal") : null;
+            if (ipIngresoLogin == null) {
+                ipIngresoLogin = request.getRemoteAddr();
+            }
+
+            Libs fechaHoraService = new Libs(entityManager);
+            String FechaIngresoLogin = fechaHoraService.obtenerFechaYHora();
+
+            // Enviar SMS y Correo
+            SendSMS sms = new SendSMS();
+            sms.sendVirtualAccessSMS(clienNumero, "1150", "VIRTUALCOP", FechaIngresoLogin);
+            sendEmail enviarCorreo = new sendEmail();
+            enviarCorreo.sendEmailInicioSesion(clienApellidos, clienNombres, FechaIngresoLogin, ipIngresoLogin, clienEmail);
+
+            // Activación definitiva de la sesión y purga de previas
+            try {
+                String tokenSession = Obtenertoken.desdeCookie(request);
+                String sessionId = jwtUtil.getSessionIdFromToken(tokenSession);
+                if (sessionId != null) {
+                    String sqlInvalida = "UPDATE andctrlvirlogin SET ctrlvirlogin_ctrl_virtual = 0 " +
+                            "WHERE ctrlvirlogin_ide_virtual = :ide AND ctrlvirlogin_user_virtual = :user AND ctrlvirlogin_cod_temporal != :uuid";
+                    Query qInv = entityManager.createNativeQuery(sqlInvalida);
+                    qInv.setParameter("ide", rucIdenClie);
+                    qInv.setParameter("user", cliacUsuVirtu);
+                    qInv.setParameter("uuid", sessionId);
+                    qInv.executeUpdate();
+
+                    String sqlActiva = "UPDATE andctrlvirlogin SET ctrlvirlogin_ctrl_virtual = 1, ctrlvirlogin_fecha_virtual = CURRENT " +
+                            "WHERE ctrlvirlogin_cod_temporal = :uuid";
+                    Query qAct = entityManager.createNativeQuery(sqlActiva);
+                    qAct.setParameter("uuid", sessionId);
+                    qAct.executeUpdate();
+                }
+            } catch (Exception ex) {
+                //kguanoluisa, [Se relanza excepcion para que @Transactional haga rollback de los UPDATEs en aceptarTerminosCondiciones y evite UnexpectedRollbackException][][2026-05-21]
+                throw new RuntimeException("Error al activar sesion en andctrlvirlogin: " + ex.getMessage(), ex);
+            }
+
+            allData.put("status", "AUTHO");
+            allData.put("des_tip_usvco", des_tip);
+            allData.put("message", "Inicio de sesion exitoso!");
+            allDataList.add(allData);
+            response.put("AllData", allDataList);
+            return new ResponseEntity<>(response, HttpStatus.OK);
+
+        } catch (Exception e) {
+            //kguanoluisa, [Se relanza excepcion para que @Transactional haga rollback de los UPDATEs en aceptarTerminosCondiciones][][2026-05-21]
+            throw new RuntimeException("Error interno del servidor en aceptarTerminosCondiciones: " + e.getMessage(), e);
+        }
+    }
+
     public static String generarNumberoSerial(int min, int max) {
         Random random = new Random();
         int randomNumber = random.nextInt((max - min) + 1) + min;
