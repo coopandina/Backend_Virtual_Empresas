@@ -71,7 +71,7 @@ La estructura principal del código sigue las convenciones de Spring Boot. Algun
 ## Autores y Mantenimiento
 
 *   **Desarrollo original:** Ing. Oscar Moreira
-*   **Mantenimiento actual:** Equipo de Desarrollo Backend
+*   **Mantenimiento actual:** Pasante Fernando Guanoluisa
 
 ---
 *README generado automáticamente según la configuración del archivo pom.xml*
