@@ -2080,10 +2080,7 @@ public class NominasService {
 
         } catch (Exception e) {
             transactionManager.rollback(status);
-            Map<String, Object> err = new HashMap<>();
-            err.put("status", "ERROR500");
-            err.put("errors", e.getMessage());
-            return new ResponseEntity<>(err, HttpStatus.INTERNAL_SERVER_ERROR);
+            throw new RuntimeException("Error en acreditarNominaExterna: " + e.getMessage(), e);
         }
     }
 
