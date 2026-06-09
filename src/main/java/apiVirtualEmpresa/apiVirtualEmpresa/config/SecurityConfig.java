@@ -67,7 +67,16 @@ public class SecurityConfig {
                 "https://andinadigital.coopandina.fin.ec:8080",
                 "https://andinadigital.coopandina.fin.ec:4173",
                 "https://andinadigital.coopandina.fin.ec:4173/empresas",
-                "https://andinadigital.coopandina.fin.ec/empresas"
+                "https://andinadigital.coopandina.fin.ec/empresas",
+                "https://digital.coopandina.fin.ec",
+                "https://digital.coopandina.fin.ec:80",
+                "https://digital.coopandina.fin.ec:8080",
+                "https://digital.coopandina.fin.ec:4173",
+                "https://digital.coopandina.fin.ec:4173/empresas",
+                "https://digital.coopandina.fin.ec/empresas",
+                "https://digital.coopandina.fin.ec:4173/empresas",
+                "https://digital.coopandina.fin.ec/empresas",
+                "https://digital.coopandina.fin.ec:4173/empresas"
         ));
 
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));

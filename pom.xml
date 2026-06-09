@@ -16,7 +16,7 @@
     <groupId>apiVirtualEmpresa</groupId>
     <artifactId>apiVirtualEmpresa</artifactId>
     <version>0.0.1-SNAPSHOT</version>
-    <packaging>jar</packaging>
+    <packaging>war</packaging>
     <name>apiVirtualEmpresa</name>
     <description>Virtual Empresas desarrollado por Ing.Oscar Moreira</description>
 
@@ -44,22 +44,36 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
             <exclusions>
+                <exclusion>
+                    <groupId>org.springframework.boot</groupId>
+                    <artifactId>spring-boot-starter-tomcat</artifactId>
 
-
-                <!-- NUEVO: Excluir autoconfiguracion de error -->
-
-
+                </exclusion>
+                <exclusion>
+                    <groupId>org.springframework.boot</groupId>
+                    <artifactId>spring-boot-starter-logging</artifactId>
+                </exclusion>
             </exclusions>
         </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-tomcat</artifactId>
+            <scope>provided</scope>
+        </dependency>
+
+
+
+
         <!-- Agregar autoconfigure de forma selectiva -->
 
-        <!-- Spring Boot DevTools -->
+        <!-- Spring Boot DevTools
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-devtools</artifactId>
             <scope>runtime</scope>
             <optional>true</optional>
-        </dependency>
+        </dependency> -->
 
         <!-- MySQL Connector -->
         <dependency>
@@ -91,7 +105,7 @@
         <dependency>
             <groupId>ApiVirtualEmpresas</groupId>
             <artifactId>libEmailSms</artifactId>
-            <version>12.0.0</version>
+            <version>13.0.0</version>
         </dependency>
 
         <dependency>
@@ -135,19 +149,37 @@
             <version>3.0.3</version>
         </dependency>
 
-        <!-- JavaMail -->
+        <!-- Jakarta Mail (reemplaza javax.mail para Spring Boot 3) -->
         <dependency>
-            <groupId>com.sun.mail</groupId>
-            <artifactId>javax.mail</artifactId>
-            <version>1.6.1</version>
+            <groupId>jakarta.mail</groupId>
+            <artifactId>jakarta.mail-api</artifactId>
+            <version>2.1.2</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.eclipse.angus</groupId>
+            <artifactId>angus-mail</artifactId>
+            <version>2.0.3</version>
+        </dependency>
+
+        <dependency>
+            <groupId>jakarta.activation</groupId>
+            <artifactId>jakarta.activation-api</artifactId>
+            <version>2.1.2</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.eclipse.angus</groupId>
+            <artifactId>angus-activation</artifactId>
+            <version>2.0.2</version>
         </dependency>
 
         <!-- Servlet API - WildFly la provee -->
-        <!--  <dependency>
+         <dependency>
             <groupId>jakarta.servlet</groupId>
             <artifactId>jakarta.servlet-api</artifactId>
             <scope>provided</scope>
-        </dependency>-->
+        </dependency>
 
 
         <!-- ================== LIBRERÍAS SRI / MITyC ================== -->
@@ -324,7 +356,20 @@
             </plugin>
 
             <!-- Maven WAR Plugin - Excluir JARs conflictivos para evitar conflictos con WildFly -->
-
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-war-plugin</artifactId>
+                <version>3.3.2</version>
+                <configuration>
+                    <packagingExcludes>
+                        WEB-INF/lib/jakarta.servlet-api-*.jar,
+                        WEB-INF/lib/javax.servlet-api-*.jar,
+                        WEB-INF/lib/tomcat-embed-*.jar,
+                        WEB-INF/lib/logback-classic-*.jar,
+                        WEB-INF/lib/logback-core-*.jar
+                    </packagingExcludes>
+                </configuration>
+            </plugin>
         </plugins>
     </build>
 </project>
