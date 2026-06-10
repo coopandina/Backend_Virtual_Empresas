@@ -35,7 +35,8 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                                     FilterChain filterChain)
             throws ServletException, IOException {
 
-        String path = request.getRequestURI();
+        // kguanoluisa, Usar servletPath para exclusiones correctas con context-path /apiVirtualEmpresa, variable path, 2026-06-10
+        String path = request.getServletPath();
 
         //  ENDPOINT SIN TOKEN
         if (path.equals("/api/password/firmar")) {
