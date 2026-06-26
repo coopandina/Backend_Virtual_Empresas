@@ -239,6 +239,63 @@ public class TransfInterService {
         }
     }
 
+    // LISTA DE INSTITUTCIONES INTERBANCARIAS tranferencia directa ddiaz
+
+    public ResponseEntity<Map<String, Object>> listarInstFinancierasdirectas(HttpServletRequest request, Authentication authentication) {
+        Map<String, Object> response = new HashMap<>();
+        Map<String, Object> allData = new HashMap<>();
+        try {
+
+            String token = Obtenertoken.desdeCookie(request);
+
+            String cliacUsuVirtu = authentication.getName();
+            String clienIdenti = jwtUtil.getrucIdenClie(token);
+            String numSocio = jwtUtil.getcodcliente(token);
+
+
+            if (cliacUsuVirtu == null || clienIdenti == null || numSocio == null) {
+                List<Map<String, Object>> allDataList = new ArrayList<>();
+                allData.put("message", "Datos del token incompletos");
+                allData.put("status", "ERRORTRFINTER001");
+                allData.put("errors", "ERROR EN LA AUTENTICACIÓN");
+                allDataList.add(allData);
+                response.put("AllData", allDataList);
+                return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+            }
+
+            String sqlInstiFinancieras =
+                    "SELECT etcptec_cod_etcptec, etcptec_des_entid, etcptec_des_abrev ,etcptec_cod_recept, etcptec_cod_ababin " +
+                            "FROM andetcptec " +
+                            "WHERE etcptec_ctr_habil = 1 " +  // Solo activos
+                            "ORDER BY etcptec_des_entid";
+            Query queryIntituFinan = entityManager.createNativeQuery(sqlInstiFinancieras);
+            List<Object[]> resultados = queryIntituFinan.getResultList();
+            if (resultados.isEmpty()) {
+                response.put("message", "No se encontrar instituciciones financieras en la BDD.");
+                response.put("status", "ERROR001");
+                return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+            }
+            List<Map<String, Object>> institucionesList = new ArrayList<>();
+            for (Object[] row : resultados) {
+                Map<String, Object> institucion = new HashMap<>();
+                institucion.put("codigo", row[0].toString().trim());
+                institucion.put("nombreInstitucion", row[1].toString().trim());
+                institucion.put("fiCode", row[3].toString().trim());
+                institucion.put("aba", row[4].toString().trim());
+                institucionesList.add(institucion);
+            }
+            response.put("Instituciones", institucionesList);
+            response.put("status", "INFOUSEROK");
+            return new ResponseEntity<>(response, HttpStatus.OK);
+        } catch (Exception e) {
+            Map<String, Object> errorResponse = new HashMap<>();
+            errorResponse.put("message", "Error interno del servidor");
+            errorResponse.put("status", "ERROR001");
+            errorResponse.put("errors", e.getMessage());
+            return new ResponseEntity<>(errorResponse, HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
     //código temporal pra transferencias interbancarias
 
 
@@ -689,6 +746,197 @@ public class TransfInterService {
             // Al lanzar aquí, Spring ve la excepción y hace rollback limpiamente, y GlobalExceptionHandler
             // recibe la cadena completa: RuntimeException → PersistenceException → SQLException (tabla inexistente).
             // - 20/05/2026
+            try {
+                transactionManager.rollback(status);
+            } catch (Exception rollbackEx) {
+                // ignorar - ya se está revirtiendo
+            }
+            throw new RuntimeException(e.getMessage(), e);
+        }
+    }
+
+
+    //ddiaz validar codigo de verificacion
+    public ResponseEntity<Map<String, Object>> validarCodigoVerificacion(HttpServletRequest request, Authentication authentication, TransfInterUtils dto) {
+        // Configuración de la transacción
+        DefaultTransactionDefinition def = new DefaultTransactionDefinition();
+        def.setName("ValidacionCodigoTransaction");
+        def.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRED);
+
+        TransactionStatus status = transactionManager.getTransaction(def);
+
+        try {
+            String token = Obtenertoken.desdeCookie(request);
+
+            String rucUsuVirtu = authentication.getName();
+            String clienIdenti = jwtUtil.getrucIdenClie(token);
+            String numSocio = jwtUtil.getcodcliente(token);
+
+            Map<String, Object> response = new HashMap<>();
+
+            // Validación de datos del token
+            if (rucUsuVirtu == null || clienIdenti == null || numSocio == null) {
+                response.put("message", "Datos del token incompletos");
+                response.put("status", "AA7294");
+                response.put("error", "ERROR EN LA AUTENTICACIÓN");
+                return new ResponseEntity<>(response, HttpStatus.UNAUTHORIZED);
+            }
+
+            // VERIFICAR SI EL USUARIO ESTÁ BLOQUEADO
+            String sqlBloqueo =
+                    "SELECT usvco_ctr_bloq " +
+                            "FROM andusvco " +
+                            "WHERE usvco_ide_clien = :ideClien " +
+                            "AND usvco_ide_usvco = :ideUsu";
+
+            Query queryBloqueo = entityManager.createNativeQuery(sqlBloqueo);
+            queryBloqueo.setParameter("ideClien", clienIdenti);
+            queryBloqueo.setParameter("ideUsu", rucUsuVirtu);
+
+            Object bloqueoResult = queryBloqueo.getSingleResult();
+
+            if (bloqueoResult == null || !"1".equals(bloqueoResult.toString().trim())) {
+                response.put("success", false);
+                response.put("message", "Usuario se encuentra bloqueado");
+                response.put("status", "AA025");
+                return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+            }
+
+            // Validación del código de verificación
+            if (dto.getCodTempTransDirec() == null || !dto.getCodTempTransDirec().matches("\\d{6}")) {
+                response.put("message", "Código de seguridad inválido");
+                response.put("status", "AA9297");
+                response.put("error", "El código debe contener exactamente 6 dígitos");
+                return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+            }
+
+            // Verificar código temporal en base de datos
+            String sqlVerificaTokenBDD = "SELECT codaccess_codigo_temporal FROM vircodaccess " +
+                    "WHERE codaccess_cedula = :codaccess_cedula AND codaccess_usuario = :codaccess_usuario " +
+                    "AND codaccess_estado = :codaccess_estado AND codsms_codigo = '10' ";
+
+            Query queryVerificaTokenBDD = entityManager.createNativeQuery(sqlVerificaTokenBDD);
+            queryVerificaTokenBDD.setParameter("codaccess_cedula", clienIdenti);
+            queryVerificaTokenBDD.setParameter("codaccess_usuario", rucUsuVirtu);
+            queryVerificaTokenBDD.setParameter("codaccess_estado", "1");
+
+            List<Object[]> resultsTokenBDD = queryVerificaTokenBDD.getResultList();
+
+            if (resultsTokenBDD.isEmpty()) {
+                response.put("message", "CODIGO TEMPORAL EXPIRADO, POR EXCEDER LOS 4 MINUTOS");
+                response.put("status", "AA1879");
+                return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+            }
+
+            String tokenFromDB = (String) queryVerificaTokenBDD.getSingleResult();
+
+            // Validar código ingresado contra el de la base de datos
+            if (!tokenFromDB.trim().equals(dto.getCodTempTransDirec())) {
+                intentosRealizadoTokenFallosInterban++;
+                if (intentosRealizadoTokenFallosInterban >= 3) {
+                    // Bloquear usuario por exceder intentos
+                    String sqlBloqUser = "UPDATE andusvco SET usvco_ctr_bloq = :bloqueo WHERE usvco_ide_clien = :rudIdenClie AND usvco_ide_usvco = :ideClieUsu";
+                    Query resultBloqUser = entityManager.createNativeQuery(sqlBloqUser);
+                    resultBloqUser.setParameter("bloqueo", "0");
+                    resultBloqUser.setParameter("rudIdenClie", clienIdenti);
+                    resultBloqUser.setParameter("ideClieUsu", rucUsuVirtu);
+
+                    try {
+                        int rowsUpdated = resultBloqUser.executeUpdate();
+                        if (rowsUpdated > 0) {
+                            // Obtener datos para el correo
+                            String sqlDatosCorreoIngreso = "SELECT usvco_nom_usvco, usvco_ema_usvco FROM andusvco WHERE usvco_ide_clien = :usvco_ide_clien AND usvco_ide_usvco = :usvco_ide_usvco";
+                            Query resulDatosCorreoIngreso = entityManager.createNativeQuery(sqlDatosCorreoIngreso);
+                            resulDatosCorreoIngreso.setParameter("usvco_ide_clien", rucUsuVirtu);
+                            resulDatosCorreoIngreso.setParameter("usvco_ide_usvco", clienIdenti);
+                            Libs fechaHoraService = new Libs(entityManager);
+                            String FechaHora = fechaHoraService.obtenerFechaYHora();
+
+                            List<Object[]> results2 = resulDatosCorreoIngreso.getResultList();
+
+                            for (Object[] row2 : results2) {
+                                String clienNombres = row2[0].toString().trim();
+                                String clienEmail = row2[1].toString().trim();
+                                String IpIngreso = dto.getIpterminal();
+                                sendEmail emailBloq = new sendEmail();
+                                emailBloq.sendEmailBloqueo("", clienNombres, FechaHora, clienEmail, IpIngreso);
+                            }
+
+                            // Actualizar estado del token
+                            String sqlUpdatesToken = "UPDATE vircodaccess " +
+                                    "SET codaccess_estado = :estado_up " +
+                                    "WHERE codaccess_cedula = :cedula " +
+                                    "AND codaccess_usuario = :usuario " +
+                                    "AND codsms_codigo = :codsms " +
+                                    "AND codaccess_estado = :estado";
+
+                            Query queryUpdatesToken = entityManager.createNativeQuery(sqlUpdatesToken);
+                            queryUpdatesToken.setParameter("estado_up", 0);
+                            queryUpdatesToken.setParameter("codsms", 10);
+                            queryUpdatesToken.setParameter("cedula", clienIdenti);
+                            queryUpdatesToken.setParameter("usuario", rucUsuVirtu);
+                            queryUpdatesToken.setParameter("estado", 1);
+
+                            int rowsUpdatesd = queryUpdatesToken.executeUpdate();
+
+                            if (rowsUpdatesd == 0) {
+                                response.put("success", false);
+                                response.put("message", "No se pudo actualizar el estado del código temporal");
+                                response.put("status", "AA024");
+                                return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+                            }
+
+                            intentosRealizadoTokenFallosInterban = 0;
+                            response.put("message", "Usuario bloqueado por exceder límite de intentos");
+                            response.put("status", "AA5059");
+                            return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+                        }
+                    } catch (Exception e) {
+                        throw new RuntimeException("Error al intentar bloquear el usuario: " + e.getMessage(), e);
+                    }
+                } else {
+                    response.put("message", "Código temporal incorrecto. Intentos restantes: " + (3 - intentosRealizadoTokenFallosInterban));
+                    response.put("status", "AA05478");
+                    return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+                }
+            }
+
+            // Código válido - Actualizar estado del token
+            String sqlUpdatesToken = "UPDATE vircodaccess " +
+                    "SET codaccess_estado = :estado_up " +
+                    "WHERE codaccess_cedula = :cedula " +
+                    "AND codaccess_usuario = :usuario " +
+                    "AND codsms_codigo = :codsms " +
+                    "AND codaccess_estado = :estado";
+
+            Query queryUpdatesToken = entityManager.createNativeQuery(sqlUpdatesToken);
+            queryUpdatesToken.setParameter("estado_up", 0);
+            queryUpdatesToken.setParameter("codsms", 10);
+            queryUpdatesToken.setParameter("cedula", clienIdenti);
+            queryUpdatesToken.setParameter("usuario", rucUsuVirtu);
+            queryUpdatesToken.setParameter("estado", 1);
+
+            int rowsUpdatesd = queryUpdatesToken.executeUpdate();
+
+            if (rowsUpdatesd == 0) {
+                response.put("success", false);
+                response.put("message", "No se pudo actualizar el estado del código temporal");
+                response.put("status", "AA024");
+                return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+            }
+
+            // Resetear contador de intentos
+            intentosRealizadoTokenFallosInterban = 0;
+
+            // Respuesta exitosa
+            response.put("message", "CÓDIGO DE VERIFICACIÓN VALIDADO CORRECTAMENTE");
+            response.put("status", "CODVALID0001");
+            response.put("success", true);
+
+            transactionManager.commit(status);
+            return new ResponseEntity<>(response, HttpStatus.OK);
+
+        } catch (Exception e) {
             try {
                 transactionManager.rollback(status);
             } catch (Exception rollbackEx) {

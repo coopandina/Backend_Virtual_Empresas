@@ -28,6 +28,13 @@ public class TransfInterController {
         return transfInterService.listarInstFinancieras(request, authentication);
     }
 
+    // NUEVO ddiaz: Lista de instituciones financieras para transferencias interbancarias directas
+    @GetMapping("/listarInsFinancierasdirectas")
+    public ResponseEntity<Map<String, Object>> listarInstitucionesDirectas(HttpServletRequest request, Authentication authentication) {
+        // Reutiliza el mismo servicio que listarInsFinancieras
+        return transfInterService.listarInstFinancierasdirectas(request, authentication);
+    }
+
     //Codigo de Transferencias interbancarias
     @PostMapping("/codTempInterbancarias")
     public ResponseEntity<Map<String, Object>> codTempInterbancarias(HttpServletRequest request, Authentication authentication, @RequestBody TransfInterUtils dto) {
@@ -37,5 +44,10 @@ public class TransfInterController {
     @PostMapping("/srtGrabarInterbn")
     public ResponseEntity<Map<String, Object>> srtGrabarInterbn(HttpServletRequest request, Authentication authentication, @RequestBody TransfInterUtils dto) {
         return transfInterService.srtGrabarInterban(request, authentication, dto);
+    }
+    // ddiaz validarCodigoVerificacion
+    @PostMapping("/validarCodigoVerificacion")
+    public ResponseEntity<Map<String, Object>> validarCodigoVerificacion(HttpServletRequest request, Authentication authentication, @RequestBody TransfInterUtils dto) {
+        return transfInterService.validarCodigoVerificacion(request, authentication, dto);
     }
 }
