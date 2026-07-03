@@ -22,6 +22,11 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.DefaultTransactionDefinition;
 import sms.SendSMS;
 
+import apiVirtualEmpresa.apiVirtualEmpresa.dto.captec.AccountDTO;
+import apiVirtualEmpresa.apiVirtualEmpresa.dto.captec.BankTransferRequest;
+import apiVirtualEmpresa.apiVirtualEmpresa.dto.captec.BankTransferResponse;
+import apiVirtualEmpresa.apiVirtualEmpresa.services.MetodoPagoClientService;
+
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.*;
@@ -33,6 +38,9 @@ import java.util.*;
 public class TransfInterService {
     @Autowired
     private TokenExpirationService tokenExpirationService;
+
+    @Autowired
+    private MetodoPagoClientService metodoPagoClientService;
 
     @PersistenceContext
     private EntityManager entityManager;
@@ -943,6 +951,519 @@ public class TransfInterService {
                 // ignorar - ya se está revirtiendo
             }
             throw new RuntimeException(e.getMessage(), e);
+        }
+    }
+
+    public ResponseEntity<Map<String, Object>> grabarInterbancariasDirectas(HttpServletRequest request, Authentication authentication, BankTransferRequest dto) {
+        DefaultTransactionDefinition def = new DefaultTransactionDefinition();
+        def.setName("GrabarInterbancariasDirectasTx");
+        def.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRED);
+
+        TransactionStatus status = transactionManager.getTransaction(def);
+
+        Map<String, Object> response = new HashMap<>();
+
+        try {
+            String token = Obtenertoken.desdeCookie(request);
+
+            String rucUsuVirtu = authentication.getName();
+            String clienIdenti = jwtUtil.getrucIdenClie(token);
+            String numSocio = jwtUtil.getcodcliente(token);
+
+            if (rucUsuVirtu == null || clienIdenti == null || numSocio == null) {
+                response.put("message", "Datos del token incompletos");
+                response.put("status", "AA7294");
+                response.put("error", "ERROR EN LA AUTENTICACIÓN");
+                return new ResponseEntity<>(response, HttpStatus.UNAUTHORIZED);
+            }
+
+            // 1. VERIFICAR SI EL USUARIO ESTÁ BLOQUEADO
+            String sqlBloqueo =
+                    "SELECT usvco_ctr_bloq " +
+                            "FROM andusvco " +
+                            "WHERE usvco_ide_clien = :ideClien " +
+                            "AND usvco_ide_usvco = :ideUsu";
+
+            Query queryBloqueo = entityManager.createNativeQuery(sqlBloqueo);
+            queryBloqueo.setParameter("ideClien", clienIdenti);
+            queryBloqueo.setParameter("ideUsu", rucUsuVirtu);
+
+            Object bloqueoResult = queryBloqueo.getSingleResult();
+
+            if (bloqueoResult == null || !"1".equals(bloqueoResult.toString().trim())) {
+                response.put("success", false);
+                response.put("message", "Usuario se encuentra bloqueado");
+                response.put("status", "AA025");
+                return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+            }
+
+            // 2. VALIDAR CÓDIGO TEMPORAL (OTP)
+            String verificationCode = dto.getVerificationCode();
+            if (verificationCode == null || !verificationCode.matches("\\d{6}")) {
+                response.put("message", "Código de seguridad inválido");
+                response.put("status", "AA9297");
+                response.put("error", "El código debe contener exactamente 6 dígitos");
+                return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+            }
+
+            String sqlVerificaTokenBDD = "SELECT codaccess_codigo_temporal FROM vircodaccess " +
+                    "WHERE codaccess_cedula = :codaccess_cedula AND codaccess_usuario = :codaccess_usuario " +
+                    "AND codaccess_estado = :codaccess_estado AND codsms_codigo = '10' ";
+
+            Query queryVerificaTokenBDD = entityManager.createNativeQuery(sqlVerificaTokenBDD);
+            queryVerificaTokenBDD.setParameter("codaccess_cedula", clienIdenti);
+            queryVerificaTokenBDD.setParameter("codaccess_usuario", rucUsuVirtu);
+            queryVerificaTokenBDD.setParameter("codaccess_estado", "1");
+
+            List<Object[]> resultsTokenBDD = queryVerificaTokenBDD.getResultList();
+
+            if (resultsTokenBDD.isEmpty()) {
+                response.put("message", "CODIGO TEMPORAL EXPIRADO, POR EXCEDER LOS 4 MINUTOS");
+                response.put("status", "AA1879");
+                return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+            }
+
+            String tokenFromDB = (String) queryVerificaTokenBDD.getSingleResult();
+
+            if (!tokenFromDB.trim().equals(verificationCode.trim())) {
+                intentosRealizadoTokenFallosInterban++;
+                if (intentosRealizadoTokenFallosInterban >= 3) {
+                    // Bloquear usuario por exceder intentos
+                    String sqlBloqUser = "UPDATE andusvco SET usvco_ctr_bloq = :bloqueo WHERE usvco_ide_clien = :rudIdenClie AND usvco_ide_usvco = :ideClieUsu";
+                    Query resultBloqUser = entityManager.createNativeQuery(sqlBloqUser);
+                    resultBloqUser.setParameter("bloqueo", "0");
+                    resultBloqUser.setParameter("rudIdenClie", clienIdenti);
+                    resultBloqUser.setParameter("ideClieUsu", rucUsuVirtu);
+
+                    try {
+                        int rowsUpdated = resultBloqUser.executeUpdate();
+                        if (rowsUpdated > 0) {
+                            // Correo
+                            String sqlDatosCorreoIngreso = "SELECT usvco_nom_usvco, usvco_ema_usvco FROM andusvco WHERE usvco_ide_clien = :usvco_ide_clien AND usvco_ide_usvco = :usvco_ide_usvco";
+                            Query resulDatosCorreoIngreso = entityManager.createNativeQuery(sqlDatosCorreoIngreso);
+                            resulDatosCorreoIngreso.setParameter("usvco_ide_clien", rucUsuVirtu);
+                            resulDatosCorreoIngreso.setParameter("usvco_ide_usvco", clienIdenti);
+                            Libs fechaHoraService = new Libs(entityManager);
+                            String FechaHora = fechaHoraService.obtenerFechaYHora();
+
+                            List<Object[]> results2 = resulDatosCorreoIngreso.getResultList();
+
+                            for (Object[] row2 : results2) {
+                                String clienNombres = row2[0].toString().trim();
+                                String clienEmail = row2[1].toString().trim();
+                                String IpIngreso = request.getRemoteAddr();
+                                sendEmail emailBloq = new sendEmail();
+                                emailBloq.sendEmailBloqueo("", clienNombres, FechaHora, clienEmail, IpIngreso);
+                            }
+
+                            // Expirar token
+                            String sqlUpdatesToken = "UPDATE vircodaccess SET codaccess_estado = '0' " +
+                                    "WHERE codaccess_cedula = :cedula AND codaccess_usuario = :usuario AND codsms_codigo = '10' AND codaccess_estado = '1'";
+                            Query queryUpdatesToken = entityManager.createNativeQuery(sqlUpdatesToken);
+                            queryUpdatesToken.setParameter("cedula", clienIdenti);
+                            queryUpdatesToken.setParameter("usuario", rucUsuVirtu);
+                            queryUpdatesToken.executeUpdate();
+
+                            intentosRealizadoTokenFallosInterban = 0;
+                            response.put("message", "Usuario bloqueado por exceder límite de intentos");
+                            response.put("status", "AA5059");
+                            transactionManager.commit(status);
+                            return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+                        }
+                    } catch (Exception e) {
+                        throw new RuntimeException("Error al intentar bloquear el usuario: " + e.getMessage(), e);
+                    }
+                } else {
+                    response.put("message", "Código temporal incorrecto. Intentos restantes: " + (3 - intentosRealizadoTokenFallosInterban));
+                    response.put("status", "AA05478");
+                    transactionManager.commit(status);
+                    return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+                }
+            }
+
+            // 3. RECUPERAR LOS DATOS OFICIALES DE LA CUENTA ORIGEN
+            String ctaEnvio = (dto.getSourceAccount() != null) ? dto.getSourceAccount().getAccountNumber() : null;
+            System.out.println("DEBUG DIRECTAS: ctaEnvio recibido = [" + ctaEnvio + "]");
+
+            if (ctaEnvio == null || !ctaEnvio.matches("\\d{12}")) {
+                System.out.println("DEBUG DIRECTAS: El número de cuenta origen es nulo o no tiene 12 dígitos.");
+                response.put("message", "El número de cuenta origen es inválido o no se proporcionó.");
+                response.put("status", "ERROR_CTA_ORIGEN");
+                transactionManager.commit(status);
+                return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+            }
+
+            String sqlCliente = "SELECT FIRST 1 " +
+                    "clien_ide_clien, " +
+                    "TRIM(clien_nom_clien) || ' ' || TRIM(clien_ape_clien) AS nombre_completo, " +
+                    "usvco_ema_usvco, " +
+                    "usvco_tlf_usvco, " +
+                    "clien_cod_empre, " +
+                    "clien_cod_ofici, " +
+                    "ctadp_cod_depos " +
+                    "FROM cnxctadp, cnxclien, andusvco " +
+                    "WHERE ctadp_cod_ctadp = :ctaEnvio " +
+                    "AND ctadp_cod_depos IN (1, 9) " +
+                    "AND ctadp_cod_ectad = '1' " +
+                    "AND ctadp_cod_clien = clien_cod_clien " +
+                    "AND clien_ide_clien = usvco_ide_clien " +
+                    "AND usvco_tip_usvco = '1'";
+
+            List<Object[]> resultClienteList = new ArrayList<>();
+            try {
+                System.out.println("DEBUG DIRECTAS: Ejecutando consulta SQL para ctaEnvio = [" + ctaEnvio + "]");
+                Query queryCliente = entityManager.createNativeQuery(sqlCliente);
+                queryCliente.setParameter("ctaEnvio", ctaEnvio);
+                resultClienteList = queryCliente.getResultList();
+                System.out.println("DEBUG DIRECTAS: Consulta SQL ejecutada. Resultados obtenidos: " + resultClienteList.size());
+            } catch (Exception e) {
+                System.out.println("DEBUG DIRECTAS: ERROR al ejecutar SQL de consulta cliente:");
+                e.printStackTrace();
+                response.put("message", "Error al consultar los datos de la cuenta en base de datos: " + e.getMessage());
+                response.put("status", "ERROR_SQL_DATOS_CLIENTE");
+                transactionManager.rollback(status);
+                return new ResponseEntity<>(response, HttpStatus.INTERNAL_SERVER_ERROR);
+            }
+
+            if (resultClienteList.isEmpty()) {
+                System.out.println("DEBUG DIRECTAS: La consulta SQL retornó vacío para ctaEnvio = [" + ctaEnvio + "]");
+                response.put("message", "La cuenta origen no existe, está inactiva o no pertenece al usuario autenticado.");
+                response.put("status", "ERROR_CTA_ORIGEN_NO_AUTORIZADA");
+                transactionManager.commit(status);
+                return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+            }
+
+            Object[] clienteData = resultClienteList.get(0);
+            String clientIdentification = clienteData[0] != null ? clienteData[0].toString().trim() : "";
+            String clientName = clienteData[1] != null ? clienteData[1].toString().trim() : "";
+            String clientEmail = clienteData[2] != null ? clienteData[2].toString().trim() : "";
+            String clientCellphone = clienteData[3] != null ? clienteData[3].toString().trim() : "";
+            Integer clientCodEmpre = clienteData[4] != null ? Integer.valueOf(clienteData[4].toString().trim()) : 69;
+            Integer clientCodOfici = clienteData[5] != null ? Integer.valueOf(clienteData[5].toString().trim()) : 1;
+            Integer clientCodDepos = clienteData[6] != null ? Integer.valueOf(clienteData[6].toString().trim()) : 1;
+
+            System.out.println("DEBUG DIRECTAS: Datos cliente recuperados -> ID: " + clientIdentification + ", Nombre: " + clientName + ", Oficina: " + clientCodOfici + ", Deposito: " + clientCodDepos);
+
+            // Truncar datos a los límites aceptados por CAPTEC (31 caracteres para nombre, 16 para descripción)
+            if (clientName.length() > 31) {
+                clientName = clientName.substring(0, 31).trim();
+                System.out.println("DEBUG DIRECTAS: Nombre de cliente truncado a 31 caracteres: [" + clientName + "]");
+            }
+
+            if (dto.getDestinationAccount() != null && dto.getDestinationAccount().getAccountHolder() != null) {
+                String destName = dto.getDestinationAccount().getAccountHolder();
+                if (destName.length() > 31) {
+                    dto.getDestinationAccount().setAccountHolder(destName.substring(0, 31).trim());
+                    System.out.println("DEBUG DIRECTAS: Nombre de beneficiario truncado a 31 caracteres: [" + dto.getDestinationAccount().getAccountHolder() + "]");
+                }
+            }
+
+            if (dto.getDescription() != null) {
+                String desc = dto.getDescription();
+                dto.setDescription(desc.length() > 16 ? desc.substring(0, 16).trim() : desc);
+                System.out.println("DEBUG DIRECTAS: Descripción truncada a 16 caracteres: [" + dto.getDescription() + "]");
+            }
+
+            // Consultar el systemid para el canal Virtual Empresas (abrev VREM/VRES) o en su defecto VRPS
+            String systemIdStr = null;
+            try {
+                // Listamos todo para la consola por depuración
+                String sqlTest = "SELECT sistecap_cod_sistecap, sistecap_abrev_sistecap, sistecap_des_sistecap FROM andsistecap";
+                Query qTest = entityManager.createNativeQuery(sqlTest);
+                List<Object[]> rsTest = qTest.getResultList();
+                System.out.println("DEBUG DIRECTAS: --- CONTENIDO DE andsistecap ---");
+                for (Object[] r : rsTest) {
+                    System.out.println("DEBUG DIRECTAS: Code=" + r[0] + ", Abrev=" + r[1] + ", Des=" + r[2]);
+                }
+                System.out.println("DEBUG DIRECTAS: ---------------------------------");
+
+                // Buscamos VREM o VRES
+                String sqlSys = "SELECT sistecap_cod_sistecap FROM andsistecap " +
+                                "WHERE sistecap_ctrl_habil = 1 AND UPPER(sistecap_abrev_sistecap) IN ('VREM', 'VRES')";
+                Query qSys = entityManager.createNativeQuery(sqlSys);
+                List<?> rsSys = qSys.getResultList();
+                if (!rsSys.isEmpty()) {
+                    systemIdStr = rsSys.get(0).toString().trim();
+                } else {
+                    // Fallback a VRPS
+                    sqlSys = "SELECT sistecap_cod_sistecap FROM andsistecap WHERE sistecap_ctrl_habil = 1 AND UPPER(sistecap_abrev_sistecap) = 'VRPS'";
+                    qSys = entityManager.createNativeQuery(sqlSys);
+                    rsSys = qSys.getResultList();
+                    if (!rsSys.isEmpty()) {
+                        systemIdStr = rsSys.get(0).toString().trim();
+                    }
+                }
+            } catch (Exception e) {
+                System.out.println("DEBUG DIRECTAS: Error al buscar systemid: " + e.getMessage());
+                e.printStackTrace();
+                response.put("message", "Error interno al consultar la configuración de systemid: " + e.getMessage());
+                response.put("status", "ERROR_SQL_SISTECAP");
+                transactionManager.rollback(status);
+                return new ResponseEntity<>(response, HttpStatus.INTERNAL_SERVER_ERROR);
+            }
+
+            if (systemIdStr == null || systemIdStr.isEmpty()) {
+                System.out.println("DEBUG DIRECTAS: systemid no encontrado o inactivo en andsistecap.");
+                response.put("message", "Configuración de systemid no encontrada o inactiva en la base de datos.");
+                response.put("status", "ERROR_CONFIG_SYSTEMID_INCOMPLETA");
+                transactionManager.rollback(status);
+                return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+            }
+
+            dto.setSystemid(systemIdStr);
+            System.out.println("DEBUG DIRECTAS: systemid configurado = [" + systemIdStr + "]");
+
+            // Consultar datos de configuración de CAPTEC (incluyendo ABA y FICode de forma dinámica)
+            String entityIdVal = null;
+            String originNetworkVal = null;
+            String terminalIdVal = null;
+            String abaVal = "260517"; // Fallbacks
+            String fiCodeVal = "0547";
+
+            try {
+                System.out.println("DEBUG DIRECTAS: Consultando configuración de pasarela en andcaptec...");
+                String sqlCaptec = "SELECT captec_entity_id, captec_orgn_netw, captec_terminal_id, captec_aba_captec, captec_ficode_captec " +
+                                   "FROM andcaptec " +
+                                   "WHERE captec_cod_empre = 69 AND captec_ctrl_captec = 1";
+                Query queryCaptec = entityManager.createNativeQuery(sqlCaptec);
+                List<Object[]> rsCaptec = queryCaptec.getResultList();
+
+                if (!rsCaptec.isEmpty() && rsCaptec.get(0) != null) {
+                    Object[] row = rsCaptec.get(0);
+                    entityIdVal = row[0] != null ? row[0].toString().trim() : null;
+                    originNetworkVal = row[1] != null ? row[1].toString().trim() : null;
+                    terminalIdVal = row[2] != null ? row[2].toString().trim() : null;
+                    if (row.length > 3 && row[3] != null) {
+                        abaVal = row[3].toString().trim();
+                    }
+                    if (row.length > 4 && row[4] != null) {
+                        fiCodeVal = row[4].toString().trim();
+                    }
+                    System.out.println("DEBUG DIRECTAS: Configuración CAPTEC recuperada -> entityId: " + entityIdVal + 
+                                       ", originNetwork: " + originNetworkVal + ", terminalId: " + terminalIdVal + 
+                                       ", aba: " + abaVal + ", fiCode: " + fiCodeVal);
+                } else {
+                    System.out.println("DEBUG DIRECTAS: No se encontró registro en la tabla andcaptec.");
+                }
+            } catch (Exception e) {
+                System.out.println("DEBUG DIRECTAS: ERROR al consultar la tabla andcaptec:");
+                e.printStackTrace();
+                response.put("message", "Error interno al consultar la configuración de la pasarela: " + e.getMessage());
+                response.put("status", "ERROR_SQL_CAPTEC");
+                transactionManager.rollback(status);
+                return new ResponseEntity<>(response, HttpStatus.INTERNAL_SERVER_ERROR);
+            }
+
+            if (entityIdVal == null || entityIdVal.isEmpty() ||
+                originNetworkVal == null || originNetworkVal.isEmpty() ||
+                terminalIdVal == null || terminalIdVal.isEmpty()) {
+                System.out.println("DEBUG DIRECTAS: Configuración de pasarela incompleta o no encontrada en andcaptec.");
+                response.put("message", "Configuración de pasarela CAPTEC no encontrada o incompleta en la base de datos.");
+                response.put("status", "ERROR_CONFIG_CAPTEC_INCOMPLETA");
+                transactionManager.rollback(status);
+                return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+            }
+
+            dto.setEntityId(entityIdVal);
+            dto.setOriginNetwork(originNetworkVal);
+            dto.setTerminalId(terminalIdVal);
+
+            String sourceIdentType = clientIdentification.length() == 13 ? "20"
+                    : (clientIdentification.length() == 10 ? "10" : "30");
+
+            // Tipo de cuenta: 20 para Corriente (ctadp_cod_depos = 9), 10 para Ahorros
+            String sourceAccountType = (clientCodDepos == 9) ? "20" : "10";
+
+            AccountDTO sourceAccount = AccountDTO.builder()
+                    .identificationNumber(clientIdentification)
+                    .identificationType(sourceIdentType)
+                    .accountType(sourceAccountType)
+                    .accountNumber(ctaEnvio)
+                    .accountHolder(clientName)
+                    .cellphone(clientCellphone)
+                    .email(clientEmail)
+                    .fiCode(fiCodeVal)
+                    .aba(abaVal)
+                    .build();
+
+            dto.setSourceAccount(sourceAccount);
+
+            // Asignar Caja, Comisión y Ciudad Dinámicas
+            dto.setTxtcaja("803");
+
+            BigDecimal valComision = BigDecimal.valueOf(0.36);
+            try {
+                String sqlComision = "SELECT comic_val_comic FROM cnxcomic " +
+                                     "WHERE comic_cod_comic = 5 " +
+                                     "AND comic_cod_ofici = :codOfici " +
+                                     "AND comic_cod_empre = :codEmpre";
+                Query queryComision = entityManager.createNativeQuery(sqlComision);
+                queryComision.setParameter("codOfici", clientCodOfici);
+                queryComision.setParameter("codEmpre", clientCodEmpre);
+                List<?> rsComision = queryComision.getResultList();
+                if (!rsComision.isEmpty() && rsComision.get(0) != null) {
+                    valComision = new BigDecimal(rsComision.get(0).toString().trim());
+                    System.out.println("DEBUG DIRECTAS: Comisión dinámica recuperada de cnxcomic = [" + valComision + "]");
+                } else {
+                    System.out.println("DEBUG DIRECTAS: No se encontró comisión en cnxcomic para oficina = [" + clientCodOfici + "], usando fallback 0.36");
+                }
+            } catch (Exception e) {
+                System.out.println("DEBUG DIRECTAS: Error al consultar comisión en cnxcomic: " + e.getMessage());
+                e.printStackTrace();
+            }
+            dto.setComission(valComision);
+
+            String oficinaNombre = "QUITO";
+            try {
+                String sqlOfi = "SELECT ofici_nom_ofici FROM cnxofici WHERE ofici_cod_ofici = :codOfi";
+                Query qOfi = entityManager.createNativeQuery(sqlOfi);
+                qOfi.setParameter("codOfi", clientCodOfici);
+                List<?> rsOfi = qOfi.getResultList();
+                if (!rsOfi.isEmpty() && rsOfi.get(0) != null) {
+                    String fullOfiName = rsOfi.get(0).toString().trim().toUpperCase();
+                    oficinaNombre = fullOfiName;
+                    
+                    if (fullOfiName.startsWith("OFICINA ")) {
+                        String afterOficina = fullOfiName.substring(8).trim();
+                        String[] parts = afterOficina.split("\\s+");
+                        if (parts.length > 0) {
+                            oficinaNombre = parts[0];
+                        }
+                    }
+                    
+                    if (fullOfiName.contains("QUITO")) {
+                        oficinaNombre = "QUITO";
+                    } else if (fullOfiName.contains("IBARRA")) {
+                        oficinaNombre = "IBARRA";
+                    } else if (fullOfiName.contains("OTAVALO")) {
+                        oficinaNombre = "OTAVALO";
+                    } else if (fullOfiName.contains("LATACUNGA")) {
+                        oficinaNombre = "LATACUNGA";
+                    }
+                    System.out.println("DEBUG DIRECTAS: Nombre de oficina recuperado = [" + oficinaNombre + "]");
+                }
+            } catch (Exception e) {
+                System.out.println("DEBUG DIRECTAS: Error al recuperar nombre de oficina: " + e.getMessage());
+            }
+            dto.setCity(oficinaNombre);
+
+            // Asignar Moneda Dinámica (Mapeando moneda local 2 a ISO 840 para USD)
+            String isoCurrency = "840";
+            try {
+                String sqlMoneda = "SELECT moned_sgn_moned FROM cnxmoned " +
+                                   "WHERE moned_cod_empre = :codEmpre " +
+                                   "AND moned_cod_ofici = :codOfi " +
+                                   "AND moned_cod_moned = 2";
+                Query queryMoneda = entityManager.createNativeQuery(sqlMoneda);
+                queryMoneda.setParameter("codEmpre", clientCodEmpre);
+                queryMoneda.setParameter("codOfi", clientCodOfici);
+                List<?> rsMoneda = queryMoneda.getResultList();
+                if (!rsMoneda.isEmpty() && rsMoneda.get(0) != null) {
+                    String sgnMoned = rsMoneda.get(0).toString().trim();
+                    if (sgnMoned.equals("USD$") || sgnMoned.contains("USD")) {
+                        isoCurrency = "840";
+                    }
+                    System.out.println("DEBUG DIRECTAS: Moneda dinámica recuperada = [" + sgnMoned + "] -> ISO: [" + isoCurrency + "]");
+                }
+            } catch (Exception e) {
+                System.out.println("DEBUG DIRECTAS: Error al consultar cnxmoned: " + e.getMessage());
+            }
+            dto.setCurrency(isoCurrency);
+
+            // 4. EXECUTAR LA TRANSFERENCIA INTERBANCARIA EN LA PASARELA
+            BankTransferResponse gatewayResponse;
+            try {
+                System.out.println("DEBUG DIRECTAS: Llamando a la pasarela Captec...");
+                gatewayResponse = metodoPagoClientService.executeTransfer(dto);
+                System.out.println("DEBUG DIRECTAS: Pasarela Captec respondió.");
+            } catch (Exception e) {
+                System.out.println("DEBUG DIRECTAS: ERROR al conectar con la pasarela Captec:");
+                e.printStackTrace();
+                response.put("message", "Error al conectar con la pasarela Captec: " + e.getMessage());
+                response.put("status", "ERROR_CONEXION_CAPTEC");
+                transactionManager.rollback(status);
+                return new ResponseEntity<>(response, HttpStatus.INTERNAL_SERVER_ERROR);
+            }
+
+            if (gatewayResponse == null || (gatewayResponse.getResult() == null && (gatewayResponse.getStatus() == null || !"000".equals(gatewayResponse.getStatus().getCode())))) {
+                System.out.println("DEBUG DIRECTAS: Error retornado por la pasarela de pagos.");
+                if (gatewayResponse != null) {
+                    System.out.println("DEBUG DIRECTAS: Status del Gateway: " + gatewayResponse.getStatus());
+                    System.out.println("DEBUG DIRECTAS: Result del Gateway: " + gatewayResponse.getResult());
+                } else {
+                    System.out.println("DEBUG DIRECTAS: La respuesta del Gateway es NULL.");
+                }
+                String errMsg = "Error al ejecutar la transferencia en la pasarela de pagos.";
+                if (gatewayResponse != null && gatewayResponse.getStatus() != null) {
+                    errMsg = gatewayResponse.getStatus().getDescription() != null && !gatewayResponse.getStatus().getDescription().trim().isEmpty()
+                             ? gatewayResponse.getStatus().getDescription()
+                             : gatewayResponse.getStatus().getMessage();
+                }
+                response.put("message", errMsg);
+                response.put("status", "ERROR_EJECUCION_PASARELA");
+                transactionManager.rollback(status);
+                return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+            }
+
+            // 4. DEBITAR EL IVA Y REGISTRAR LA FACTURA DE LA COMISIÓN
+            // System.out.println("DEBUG DIRECTAS: Llamando a grabar2 para debitar IVA e ingresar factura...");
+            ResponseEntity<Map<String, Object>> grabar2Response = grabar2(
+                    clientCodEmpre.toString(),
+                    clientCodOfici.toString(),
+                    clientIdentification,
+                    "0",
+                    "803",
+                    valComision.doubleValue(),
+                    1,
+                    dto.getDestinationAccount().getAccountHolder(),
+                    "0",
+                    "0",
+                    ctaEnvio,
+                    15,
+                    "125"
+            );
+            if (grabar2Response.getStatusCode() != HttpStatus.OK) {
+                // System.out.println("DEBUG DIRECTAS: Error retornado por grabar2. Deshaciendo transaccion.");
+                transactionManager.rollback(status);
+                return grabar2Response;
+            }
+
+            // 5. ACTUALIZAR ESTADO DEL TOKEN A USADO (0)
+            String sqlUpdatesToken = "UPDATE vircodaccess " +
+                    "SET codaccess_estado = '0' " +
+                    "WHERE codaccess_cedula = :cedula " +
+                    "AND codaccess_usuario = :usuario " +
+                    "AND codsms_codigo = '10' " +
+                    "AND codaccess_estado = '1'";
+
+            Query queryUpdatesToken = entityManager.createNativeQuery(sqlUpdatesToken);
+            queryUpdatesToken.setParameter("cedula", clienIdenti);
+            queryUpdatesToken.setParameter("usuario", rucUsuVirtu);
+            queryUpdatesToken.executeUpdate();
+
+            // Resetear contador de intentos
+            intentosRealizadoTokenFallosInterban = 0;
+
+            transactionManager.commit(status);
+
+            // Mapear respuesta exitosa
+            Map<String, Object> successRes = new HashMap<>();
+            successRes.put("success", true);
+            successRes.put("status", "DTROK0005");
+            successRes.put("message", "TRANSFERENCIA INTERBANCARIA REALIZADA CON ÉXITO");
+            successRes.put("result", gatewayResponse.getResult());
+            successRes.put("statusCode", gatewayResponse.getStatus());
+            return new ResponseEntity<>(successRes, HttpStatus.OK);
+
+        } catch (Exception e) {
+            try {
+                transactionManager.rollback(status);
+            } catch (Exception rollbackEx) {
+                // ignorar
+            }
+            response.put("message", "Error interno al ejecutar la transferencia: " + e.getMessage());
+            response.put("status", "ERROR");
+            return new ResponseEntity<>(response, HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
 

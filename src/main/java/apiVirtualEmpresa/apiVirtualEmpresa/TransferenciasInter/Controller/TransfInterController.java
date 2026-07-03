@@ -2,6 +2,7 @@ package apiVirtualEmpresa.apiVirtualEmpresa.TransferenciasInter.Controller;
 
 import apiVirtualEmpresa.apiVirtualEmpresa.TransferenciasInter.Service.TransfInterService;
 import apiVirtualEmpresa.apiVirtualEmpresa.TransferenciasInter.dto.TransfInterUtils;
+import apiVirtualEmpresa.apiVirtualEmpresa.dto.captec.BankTransferRequest;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -49,5 +50,10 @@ public class TransfInterController {
     @PostMapping("/validarCodigoVerificacion")
     public ResponseEntity<Map<String, Object>> validarCodigoVerificacion(HttpServletRequest request, Authentication authentication, @RequestBody TransfInterUtils dto) {
         return transfInterService.validarCodigoVerificacion(request, authentication, dto);
+    }
+
+    @PostMapping("/grabarInterbancariasDirectas")
+    public ResponseEntity<Map<String, Object>> grabarInterbancariasDirectas(HttpServletRequest request, Authentication authentication, @RequestBody BankTransferRequest dto) {
+        return transfInterService.grabarInterbancariasDirectas(request, authentication, dto);
     }
 }
