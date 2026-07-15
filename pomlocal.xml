@@ -12,35 +12,29 @@
         <relativePath/>
     </parent>
 
+
     <groupId>apiVirtualEmpresa</groupId>
     <artifactId>apiVirtualEmpresa</artifactId>
     <version>0.0.1-SNAPSHOT</version>
     <packaging>war</packaging>
     <name>apiVirtualEmpresa</name>
-    <description>Virtual Empresas desarrollado por Oscar Moreira</description>
+    <description>Virtual Empresas desarrollado por Ing.Oscar Moreira</description>
 
     <properties>
         <java.version>23</java.version>
         <start-class>apiVirtualEmpresa.apiVirtualEmpresa.ApiVirtualEmpresaApplication</start-class>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
-        <maven.compiler.source>23</maven.compiler.source>
-        <maven.compiler.target>23</maven.compiler.target>
     </properties>
+
     <dependencies>
         <!-- Spring Boot Starter Data JPA - EXCLUIR LOGBACK -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-data-jpa</artifactId>
             <exclusions>
-                <exclusion>
-                    <groupId>ch.qos.logback</groupId>
-                    <artifactId>logback-classic</artifactId>
-                </exclusion>
-                <exclusion>
-                    <groupId>ch.qos.logback</groupId>
-                    <artifactId>logback-core</artifactId>
-                </exclusion>
+
+
             </exclusions>
         </dependency>
 
@@ -52,43 +46,33 @@
                 <exclusion>
                     <groupId>org.springframework.boot</groupId>
                     <artifactId>spring-boot-starter-tomcat</artifactId>
-                </exclusion>
-                <exclusion>
-                    <groupId>jakarta.servlet</groupId>
-                    <artifactId>jakarta.servlet-api</artifactId>
-                </exclusion>
-                <exclusion>
-                    <groupId>ch.qos.logback</groupId>
-                    <artifactId>logback-classic</artifactId>
+
                 </exclusion>
                 <exclusion>
                     <groupId>org.springframework.boot</groupId>
                     <artifactId>spring-boot-starter-logging</artifactId>
                 </exclusion>
-                <!-- NUEVO: Excluir autoconfiguracion de error -->
-                <exclusion>
-                    <groupId>org.springframework.boot</groupId>
-                    <artifactId>spring-boot-autoconfigure</artifactId>
-                </exclusion>
-
-                <exclusion>
-                    <groupId>ch.qos.logback</groupId>
-                    <artifactId>logback-core</artifactId>
-                </exclusion>
             </exclusions>
         </dependency>
-        <!-- Agregar autoconfigure de forma selectiva -->
+
         <dependency>
             <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-autoconfigure</artifactId>
+            <artifactId>spring-boot-starter-tomcat</artifactId>
+            <scope>provided</scope>
         </dependency>
-        <!-- Spring Boot DevTools -->
+
+
+
+
+        <!-- Agregar autoconfigure de forma selectiva -->
+
+        <!-- Spring Boot DevTools
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-devtools</artifactId>
             <scope>runtime</scope>
             <optional>true</optional>
-        </dependency>
+        </dependency> -->
 
         <!-- MySQL Connector -->
         <dependency>
@@ -115,16 +99,6 @@
             <groupId>ApiVirtualEmpresas</groupId>
             <artifactId>libSMS</artifactId>
             <version>3.0.0</version>
-        </dependency>
-        <dependency>
-            <groupId>sdx.sri</groupId>
-            <artifactId>srijava</artifactId>
-            <version>1.0</version>
-        </dependency>
-
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-mail</artifactId>
         </dependency>
 
         <dependency>
@@ -174,11 +148,29 @@
             <version>3.0.3</version>
         </dependency>
 
-        <!-- JavaMail -->
+        <!-- Jakarta Mail (reemplaza javax.mail para Spring Boot 3) -->
         <dependency>
-            <groupId>com.sun.mail</groupId>
-            <artifactId>javax.mail</artifactId>
-            <version>1.6.1</version>
+            <groupId>jakarta.mail</groupId>
+            <artifactId>jakarta.mail-api</artifactId>
+            <version>2.1.2</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.eclipse.angus</groupId>
+            <artifactId>angus-mail</artifactId>
+            <version>2.0.3</version>
+        </dependency>
+
+        <dependency>
+            <groupId>jakarta.activation</groupId>
+            <artifactId>jakarta.activation-api</artifactId>
+            <version>2.1.2</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.eclipse.angus</groupId>
+            <artifactId>angus-activation</artifactId>
+            <version>2.0.2</version>
         </dependency>
 
         <!-- Servlet API - WildFly la provee -->
@@ -188,23 +180,116 @@
             <scope>provided</scope>
         </dependency>
 
-        <!-- Spring Security - EXCLUIR Servlet API y Logback -->
+
+        <!-- ================== LIBRERÍAS SRI / MITyC ================== -->
+        <dependency>
+            <groupId>sdx.sri</groupId>
+            <artifactId>srijava</artifactId>
+            <version>1.0</version>
+        </dependency>
+
+        <dependency>
+            <groupId>sdx.sri</groupId>
+            <artifactId>MITyCLibXADES</artifactId>
+            <version>1.1.7</version>
+        </dependency>
+
+        <dependency>
+            <groupId>sdx.sri</groupId>
+            <artifactId>MITyCLibAPI</artifactId>
+            <version>1.1.7</version>
+        </dependency>
+
+        <dependency>
+            <groupId>sdx.sri</groupId>
+            <artifactId>MITyCLibCert</artifactId>
+            <version>1.1.7</version>
+        </dependency>
+
+        <dependency>
+            <groupId>sdx.sri</groupId>
+            <artifactId>MITyCLibCrypt</artifactId>
+            <version>1.1.7</version>
+        </dependency>
+
+        <dependency>
+            <groupId>sdx.sri</groupId>
+            <artifactId>MITyCLibOCSP</artifactId>
+            <version>1.1.7</version>
+        </dependency>
+
+        <dependency>
+            <groupId>sdx.sri</groupId>
+            <artifactId>MITyCLibPolicy</artifactId>
+            <version>1.1.7</version>
+        </dependency>
+
+        <dependency>
+            <groupId>sdx.sri</groupId>
+            <artifactId>MITyCLibTrust</artifactId>
+            <version>1.1.7</version>
+        </dependency>
+
+        <dependency>
+            <groupId>sdx.sri</groupId>
+            <artifactId>MITyCLibTSA</artifactId>
+            <version>1.1.7</version>
+        </dependency>
+        <dependency>
+            <groupId>xmlsec</groupId>
+            <artifactId>xmlsec</artifactId>
+            <version>1.4.2-ADSI-1.1</version>
+        </dependency>
+
+        <dependency>
+            <groupId>xml-apis</groupId>
+            <artifactId>xml-apis</artifactId>
+            <version>1.3.04</version>
+        </dependency>
+        <!-- ================== BOUNCY CASTLE ================== -->
+        <dependency>
+            <groupId>sdx.sri</groupId>
+            <artifactId>bcprov-jdk16</artifactId>
+            <version>1.45</version>
+        </dependency>
+
+        <dependency>
+            <groupId>sdx.sri</groupId>
+            <artifactId>bcmail-jdk16</artifactId>
+            <version>1.45</version>
+        </dependency>
+
+        <dependency>
+            <groupId>sdx.sri</groupId>
+            <artifactId>bctsp-jdk16</artifactId>
+            <version>1.45</version>
+        </dependency>
+
+        <dependency>
+            <groupId>commons-codec</groupId>
+            <artifactId>commons-codec</artifactId>
+            <version>1.2</version>
+        </dependency>
+
+        <dependency>
+            <groupId>commons-httpclient</groupId>
+            <artifactId>commons-httpclient</artifactId>
+            <version>3.0.1</version>
+        </dependency>
+
+        <dependency>
+            <groupId>commons-lang</groupId>
+            <artifactId>commons-lang</artifactId>
+            <version>2.4</version>
+        </dependency>
+
+
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-security</artifactId>
             <exclusions>
-                <exclusion>
-                    <groupId>jakarta.servlet</groupId>
-                    <artifactId>jakarta.servlet-api</artifactId>
-                </exclusion>
-                <exclusion>
-                    <groupId>ch.qos.logback</groupId>
-                    <artifactId>logback-classic</artifactId>
-                </exclusion>
-                <exclusion>
-                    <groupId>ch.qos.logback</groupId>
-                    <artifactId>logback-core</artifactId>
-                </exclusion>
+
+
             </exclusions>
         </dependency>
 
@@ -235,6 +320,20 @@
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
         </dependency>
+
+        <!-- JavaMail para enviar correos -->
+        <dependency>
+            <groupId>com.sun.mail</groupId>
+            <artifactId>javax.mail</artifactId>
+            <version>1.6.2</version>
+        </dependency>
+
+        <!-- Alternativa: Jakarta Mail (si usas Spring Boot 3) -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-mail</artifactId>
+        </dependency>
+
     </dependencies>
 
     <build>
@@ -254,6 +353,7 @@
                     </annotationProcessorPaths>
                 </configuration>
             </plugin>
+
 
             <!-- Spring Boot Maven Plugin -->
             <plugin>

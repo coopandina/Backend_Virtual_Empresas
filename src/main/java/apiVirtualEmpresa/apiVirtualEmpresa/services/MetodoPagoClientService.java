@@ -98,8 +98,8 @@ public class MetodoPagoClientService {
         // Resolve dynamic source account data
         if (request.getSourceAccount() != null && request.getSourceAccount().getAccountNumber() != null) {
             String ctaEnvio = request.getSourceAccount().getAccountNumber();
-            // System.out.println("=== [DATABASE DEBUG: verifyRecipient] START ===");
-            // System.out.println("Input Source Account (ctaEnvio): " + ctaEnvio);
+            System.out.println("=== [DATABASE DEBUG: verifyRecipient] START ===");
+            System.out.println("Input Source Account (ctaEnvio): " + ctaEnvio);
 
             // 1. Look up CAPTEC details
             String entityIdVal = null;
@@ -112,7 +112,7 @@ public class MetodoPagoClientService {
                 String sqlCaptec = "SELECT captec_entity_id, captec_orgn_netw, captec_terminal_id, captec_aba_captec, captec_ficode_captec " +
                                    "FROM andcaptec " +
                                    "WHERE captec_cod_empre = 69 AND captec_ctrl_captec = 1";
-                // System.out.println("Executing query on 'andcaptec'...");
+                System.out.println("Executing query on 'andcaptec'...");
                 Query queryCaptec = entityManager.createNativeQuery(sqlCaptec);
                 List<Object[]> rsCaptec = queryCaptec.getResultList();
                 if (!rsCaptec.isEmpty() && rsCaptec.get(0) != null) {
@@ -122,22 +122,22 @@ public class MetodoPagoClientService {
                     if (row[2] != null) terminalIdVal = row[2].toString().trim();
                     if (row.length > 3 && row[3] != null) abaVal = row[3].toString().trim();
                     if (row.length > 4 && row[4] != null) fiCodeVal = row[4].toString().trim();
-                    // System.out.println("CAPTEC details resolved successfully:");
-                    // System.out.println("  entityIdVal: " + entityIdVal);
-                    // System.out.println("  originNetworkVal: " + originNetworkVal);
-                    // System.out.println("  terminalIdVal: " + terminalIdVal);
-                    // System.out.println("  abaVal: " + abaVal);
-                    // System.out.println("  fiCodeVal: " + fiCodeVal);
+                    System.out.println("CAPTEC details resolved successfully:");
+                    System.out.println("  entityIdVal: " + entityIdVal);
+                    System.out.println("  originNetworkVal: " + originNetworkVal);
+                    System.out.println("  terminalIdVal: " + terminalIdVal);
+                    System.out.println("  abaVal: " + abaVal);
+                    System.out.println("  fiCodeVal: " + fiCodeVal);
                 } else {
-                    // System.out.println("WARNING: Query on 'andcaptec' returned NO results.");
+                    System.out.println("WARNING: Query on 'andcaptec' returned NO results.");
                 }
             } catch (Exception e) {
-                // System.out.println("Error querying captec table: " + e.getMessage());
+                System.out.println("Error querying captec table: " + e.getMessage());
                 e.printStackTrace();
             }
 
             if (entityIdVal == null || originNetworkVal == null || terminalIdVal == null || abaVal == null || fiCodeVal == null) {
-                // System.out.println("ERROR: Missing CAPTEC configuration in database.");
+                System.out.println("ERROR: Missing CAPTEC configuration in database.");
                 throw new IllegalStateException("Configuracion de pasarela CAPTEC no encontrada o incompleta en la base de datos.");
             }
 
@@ -163,7 +163,7 @@ public class MetodoPagoClientService {
                         "AND ctadp_cod_clien = clien_cod_clien " +
                         "AND clien_ide_clien = usvco_ide_clien " +
                         "AND usvco_tip_usvco = '1'";
-                // System.out.println("Executing query on cnxctadp/cnxclien/andusvco...");
+                System.out.println("Executing query on cnxctadp/cnxclien/andusvco...");
                 Query queryCliente = entityManager.createNativeQuery(sqlCliente);
                 queryCliente.setParameter("ctaEnvio", ctaEnvio);
                 List<Object[]> resultClienteList = queryCliente.getResultList();
@@ -216,34 +216,34 @@ public class MetodoPagoClientService {
                             }
                         }
                     } catch (Exception e) {
-                        // System.out.println("Error resolving office city for verification: " + e.getMessage());
+                        System.out.println("Error resolving office city for verification: " + e.getMessage());
                     }
                     request.setCity(oficinaNombre);
                     
-                    // System.out.println("Client details resolved successfully:");
-                    // System.out.println("  clientIdentification: " + clientIdentification);
-                    // System.out.println("  clientName: " + clientName);
-                    // System.out.println("  clientEmail: " + clientEmail);
-                    // System.out.println("  clientCellphone: " + clientCellphone);
-                    // System.out.println("  sourceIdentType: " + sourceIdentType);
-                    // System.out.println("  sourceAccountType: " + sourceAccountType);
-                    // System.out.println("  resolvedCity: " + oficinaNombre);
+                    System.out.println("Client details resolved successfully:");
+                    System.out.println("  clientIdentification: " + clientIdentification);
+                    System.out.println("  clientName: " + clientName);
+                    System.out.println("  clientEmail: " + clientEmail);
+                    System.out.println("  clientCellphone: " + clientCellphone);
+                    System.out.println("  sourceIdentType: " + sourceIdentType);
+                    System.out.println("  sourceAccountType: " + sourceAccountType);
+                    System.out.println("  resolvedCity: " + oficinaNombre);
                 } else {
-                    // System.out.println("WARNING: Query on cnxctadp/cnxclien/andusvco returned NO results.");
+                    System.out.println("WARNING: Query on cnxctadp/cnxclien/andusvco returned NO results.");
                 }
             } catch (Exception e) {
-                // System.out.println("Error querying client details for validated-entity: " + e.getMessage());
+                System.out.println("Error querying client details for validated-entity: " + e.getMessage());
                 throw new IllegalStateException("Error al consultar datos del cliente origen en la base de datos.", e);
             }
 
             if (!clientFound) {
-                // System.out.println("ERROR: Client details not found in database.");
+                System.out.println("ERROR: Client details not found in database.");
                 throw new IllegalStateException("Datos del cliente origen no encontrados en la base de datos para la cuenta: " + ctaEnvio);
             }
 
             request.getSourceAccount().setFiCode(fiCodeVal);
             request.getSourceAccount().setAba(abaVal);
-            // System.out.println("=== [DATABASE DEBUG: verifyRecipient] END ===");
+            System.out.println("=== [DATABASE DEBUG: verifyRecipient] END ===");
         }
 
         // Resolve systemid dynamically from database and sanitize/truncate account fields
@@ -258,32 +258,32 @@ public class MetodoPagoClientService {
         com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
         mapper.enable(com.fasterxml.jackson.databind.SerializationFeature.INDENT_OUTPUT);
         
-        // System.out.println("=== [GATEWAY DEBUG: verifyRecipient] START ===");
-        // System.out.println("URL: " + url);
-        // System.out.println("Headers: " + headers);
-        // try {
-        //     String jsonRequest = mapper.writeValueAsString(request);
-        //     System.out.println("Payload (JSON):\n" + jsonRequest);
-        // } catch (Exception e) {
-        //     System.out.println("Payload (String representation): " + request);
-        // }
+        System.out.println("=== [GATEWAY DEBUG: verifyRecipient] START ===");
+        System.out.println("URL: " + url);
+        System.out.println("Headers: " + headers);
+        try {
+            String jsonRequest = mapper.writeValueAsString(request);
+            System.out.println("Payload (JSON):\n" + jsonRequest);
+        } catch (Exception e) {
+            System.out.println("Payload (String representation): " + request);
+        }
 
         try {
             ResponseEntity<ValidatedEntityResponse> response = restTemplate.postForEntity(url, entity, ValidatedEntityResponse.class);
-            // System.out.println("Response Status Code: " + response.getStatusCode());
-            // try {
-            //     String jsonResponse = mapper.writeValueAsString(response.getBody());
-            //     System.out.println("Response Body (JSON):\n" + jsonResponse);
-            // } catch (Exception e) {
-            //     System.out.println("Response Body: " + response.getBody());
-            // }
-            // System.out.println("=== [GATEWAY DEBUG: verifyRecipient] END ===");
+            System.out.println("Response Status Code: " + response.getStatusCode());
+            try {
+                String jsonResponse = mapper.writeValueAsString(response.getBody());
+                System.out.println("Response Body (JSON):\n" + jsonResponse);
+            } catch (Exception e) {
+                System.out.println("Response Body: " + response.getBody());
+            }
+            System.out.println("=== [GATEWAY DEBUG: verifyRecipient] END ===");
             return response.getBody();
         } catch (org.springframework.web.client.HttpStatusCodeException e) {
-            // System.out.println("Response Status Code: " + e.getStatusCode());
+            System.out.println("Response Status Code: " + e.getStatusCode());
             String responseBody = e.getResponseBodyAsString();
-            // System.out.println("Response Error Body: " + responseBody);
-            // System.out.println("=== [GATEWAY DEBUG: verifyRecipient] END (WITH HTTP STATUS ERROR) ===");
+            System.out.println("Response Error Body: " + responseBody);
+            System.out.println("=== [GATEWAY DEBUG: verifyRecipient] END (WITH HTTP STATUS ERROR) ===");
             try {
                 if (responseBody != null && !responseBody.trim().isEmpty()) {
                     return mapper.readValue(responseBody, ValidatedEntityResponse.class);
@@ -292,9 +292,9 @@ public class MetodoPagoClientService {
             }
             throw new RuntimeException("Error al conectar con la pasarela de pagos (validated-entity): " + e.getMessage(), e);
         } catch (Exception e) {
-            // System.out.println("Exception: " + e.getMessage());
+            System.out.println("Exception: " + e.getMessage());
             e.printStackTrace();
-            // System.out.println("=== [GATEWAY DEBUG: verifyRecipient] END (WITH EXCEPTION) ===");
+            System.out.println("=== [GATEWAY DEBUG: verifyRecipient] END (WITH EXCEPTION) ===");
             throw new RuntimeException("Error al conectar con la pasarela de pagos (validated-entity): " + e.getMessage(), e);
         }
     }
@@ -312,32 +312,32 @@ public class MetodoPagoClientService {
         com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
         mapper.enable(com.fasterxml.jackson.databind.SerializationFeature.INDENT_OUTPUT);
         
-        // System.out.println("=== [GATEWAY DEBUG: executeTransfer] START ===");
-        // System.out.println("URL: " + url);
-        // System.out.println("Headers: " + headers);
-        // try {
-        //     String jsonRequest = mapper.writeValueAsString(request);
-        //     System.out.println("Payload (JSON):\n" + jsonRequest);
-        // } catch (Exception e) {
-        //     System.out.println("Payload (String representation): " + request);
-        // }
+        System.out.println("=== [GATEWAY DEBUG: executeTransfer] START ===");
+        System.out.println("URL: " + url);
+        System.out.println("Headers: " + headers);
+        try {
+            String jsonRequest = mapper.writeValueAsString(request);
+            System.out.println("Payload (JSON):\n" + jsonRequest);
+        } catch (Exception e) {
+            System.out.println("Payload (String representation): " + request);
+        }
 
         try {
             ResponseEntity<BankTransferResponse> response = restTemplate.postForEntity(url, entity, BankTransferResponse.class);
-            // System.out.println("Response Status Code: " + response.getStatusCode());
-            // try {
-            //     String jsonResponse = mapper.writeValueAsString(response.getBody());
-            //     System.out.println("Response Body (JSON):\n" + jsonResponse);
-            // } catch (Exception e) {
-            //     System.out.println("Response Body: " + response.getBody());
-            // }
-            // System.out.println("=== [GATEWAY DEBUG: executeTransfer] END ===");
+            System.out.println("Response Status Code: " + response.getStatusCode());
+            try {
+                String jsonResponse = mapper.writeValueAsString(response.getBody());
+                System.out.println("Response Body (JSON):\n" + jsonResponse);
+            } catch (Exception e) {
+                System.out.println("Response Body: " + response.getBody());
+            }
+            System.out.println("=== [GATEWAY DEBUG: executeTransfer] END ===");
             return response.getBody();
         } catch (org.springframework.web.client.HttpStatusCodeException e) {
-            // System.out.println("Response Status Code: " + e.getStatusCode());
+            System.out.println("Response Status Code: " + e.getStatusCode());
             String responseBody = e.getResponseBodyAsString();
-            // System.out.println("Response Error Body: " + responseBody);
-            // System.out.println("=== [GATEWAY DEBUG: executeTransfer] END (WITH HTTP STATUS ERROR) ===");
+            System.out.println("Response Error Body: " + responseBody);
+            System.out.println("=== [GATEWAY DEBUG: executeTransfer] END (WITH HTTP STATUS ERROR) ===");
             try {
                 if (responseBody != null && !responseBody.trim().isEmpty()) {
                     return mapper.readValue(responseBody, BankTransferResponse.class);
@@ -346,9 +346,9 @@ public class MetodoPagoClientService {
             }
             throw new RuntimeException("Error al conectar con la pasarela de pagos (bank-transfer): " + e.getMessage(), e);
         } catch (Exception e) {
-            // System.out.println("Exception: " + e.getMessage());
+            System.out.println("Exception: " + e.getMessage());
             e.printStackTrace();
-            // System.out.println("=== [GATEWAY DEBUG: executeTransfer] END (WITH EXCEPTION) ===");
+            System.out.println("=== [GATEWAY DEBUG: executeTransfer] END (WITH EXCEPTION) ===");
             throw new RuntimeException("Error al conectar con la pasarela de pagos (bank-transfer): " + e.getMessage(), e);
         }
     }

@@ -49,7 +49,9 @@ public class SecurityConfig {
         // ✅ Agregar tu IP del frontend con puerto 3000
         configuration.setAllowedOrigins(Arrays.asList(
             "http://localhost:5173",
+            "http://localhost:5174",
             "http://127.0.0.1:5173",
+            "http://127.0.0.1:5174",
             "http://192.168.17.145:5173",
             "http://192.168.17.72:5173",
             "http://192.168.17.145:5174",
@@ -80,11 +82,12 @@ public class SecurityConfig {
                 "https://digital.coopandina.fin.ec:80",
                 "https://digital.coopandina.fin.ec:8080",
                 "https://digital.coopandina.fin.ec:4173",
-                "https://digital.coopandina.fin.ec:4173/empresas",
+
                 "https://digital.coopandina.fin.ec/empresas",
-                "https://digital.coopandina.fin.ec:4173/empresas",
+
                 "https://digital.coopandina.fin.ec/empresas",
                 "https://digital.coopandina.fin.ec:4173/empresas"
+
         ));
 
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));

@@ -1806,6 +1806,52 @@ public class TransfInterService {
     }
 
 
+    public ResponseEntity<Map<String, Object>> verificarEstadoCaptec(HttpServletRequest request, Authentication authentication) {
+        Map<String, Object> response = new HashMap<>();
+        try {
+            String token = Obtenertoken.desdeCookie(request);
+            if (token == null || authentication == null || !authentication.isAuthenticated()) {
+                response.put("success", false);
+                response.put("message", "Sesión no válida o expirada");
+                response.put("status", "AA028");
+                return new ResponseEntity<>(response, HttpStatus.UNAUTHORIZED);
+            }
+
+            String sql = "SELECT profi_val_enter, profi_des_profi FROM cnxprofi WHERE profi_cod_profi = 'sisacpfrasrcio'";
+            Query query = entityManager.createNativeQuery(sql);
+            List<Object[]> resultados = query.getResultList();
+
+            if (resultados.isEmpty()) {
+                response.put("activo", false);
+                response.put("mensaje", "Servicio no disponible temporalmente");
+                response.put("status", "OK");
+                return new ResponseEntity<>(response, HttpStatus.OK);
+            }
+
+            Object[] fila = resultados.get(0);
+            int valorEstado = 0;
+            if (fila[0] != null) {
+                valorEstado = ((Number) fila[0]).intValue();
+            }
+            String mensajeDescriptivo = fila[1] != null ? fila[1].toString().trim() : "Servicio fuera de servicio";
+
+            boolean activo = (valorEstado == 1);
+
+            response.put("activo", activo);
+            response.put("mensaje", activo ? "" : mensajeDescriptivo);
+            response.put("status", "OK");
+            return new ResponseEntity<>(response, HttpStatus.OK);
+
+        } catch (Exception e) {
+            System.err.println("Error al verificar estado CAPTEC: " + e.getMessage());
+            response.put("activo", false);
+            response.put("mensaje", "Error al verificar el estado del servicio");
+            response.put("status", "ERROR");
+            return new ResponseEntity<>(response, HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+
     public String obtenerSaldoDisponible(String txtcodctadp) throws Exception {
         try {
             // 1. Obtener la fecha actual del sistema llamando a un procedimiento almacenado

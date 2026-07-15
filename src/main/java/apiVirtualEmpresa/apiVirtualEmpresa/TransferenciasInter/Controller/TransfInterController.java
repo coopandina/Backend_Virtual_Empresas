@@ -56,4 +56,9 @@ public class TransfInterController {
     public ResponseEntity<Map<String, Object>> grabarInterbancariasDirectas(HttpServletRequest request, Authentication authentication, @RequestBody BankTransferRequest dto) {
         return transfInterService.grabarInterbancariasDirectas(request, authentication, dto);
     }
+
+    @PostMapping("/verificarEstadoCaptec")
+    public ResponseEntity<Map<String, Object>> verificarEstadoCaptec(HttpServletRequest request, Authentication authentication) {
+        return transfInterService.verificarEstadoCaptec(request, authentication);
+    }
 }
