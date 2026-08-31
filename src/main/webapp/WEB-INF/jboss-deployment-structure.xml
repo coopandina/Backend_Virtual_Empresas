@@ -11,6 +11,8 @@
         </exclusions>
         <dependencies>
             <module name="jakarta.servlet.api" export="true"/>
+            <!-- Las librerias jakarta.mail se incluyen dentro del WAR (org.eclipse.angus:jakarta.mail) -->
+            <!-- No se declaran como modulos del servidor porque WildFly 27 no los tiene instalados -->
         </dependencies>
     </deployment>
 </jboss-deployment-structure>

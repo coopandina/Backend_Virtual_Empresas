@@ -1268,6 +1268,12 @@ public class TransfInterService {
             dto.setOriginNetwork(originNetworkVal);
             dto.setTerminalId(terminalIdVal);
 
+            java.util.Date now = metodoPagoClientService.obtenerFechaHoraBD();
+            String finalTxDate = metodoPagoClientService.generateTxDate(now);
+            String finalTxId = metodoPagoClientService.generateTxId(now);
+            dto.setTxDate(finalTxDate);
+            dto.setTxId(finalTxId);
+
             String sourceIdentType = clientIdentification.length() == 13 ? "20"
                     : (clientIdentification.length() == 10 ? "10" : "30");
 
@@ -1291,25 +1297,53 @@ public class TransfInterService {
             // Asignar Caja, Comisión y Ciudad Dinámicas
             dto.setTxtcaja("803");
 
-            BigDecimal valComision = BigDecimal.valueOf(0.36);
-            try {
-                String sqlComision = "SELECT comic_val_comic FROM cnxcomic " +
-                                     "WHERE comic_cod_comic = 5 " +
-                                     "AND comic_cod_ofici = :codOfici " +
-                                     "AND comic_cod_empre = :codEmpre";
-                Query queryComision = entityManager.createNativeQuery(sqlComision);
-                queryComision.setParameter("codOfici", clientCodOfici);
-                queryComision.setParameter("codEmpre", clientCodEmpre);
-                List<?> rsComision = queryComision.getResultList();
-                if (!rsComision.isEmpty() && rsComision.get(0) != null) {
-                    valComision = new BigDecimal(rsComision.get(0).toString().trim());
-                    System.out.println("DEBUG DIRECTAS: Comisión dinámica recuperada de cnxcomic = [" + valComision + "]");
-                } else {
-                    System.out.println("DEBUG DIRECTAS: No se encontró comisión en cnxcomic para oficina = [" + clientCodOfici + "], usando fallback 0.36");
+                    BigDecimal valComision = null;
+                    String ctrlComision ="0";
+                    String sqlComisione = "SELECT cmcempr_comic_cmcempr, cmcempr_ctrl_cmcempr FROM andcmcempr " +
+                                                 "WHERE cmcempr_ide_clien = :idclien ";
+
+                            Query queryComisione = entityManager.createNativeQuery(sqlComisione);
+                            queryComisione.setParameter("idclien", clientIdentification);
+                         
+                            List<?> rsComisione = queryComisione.getResultList();
+                            if (!rsComisione.isEmpty() && rsComisione.get(0) != null) {
+                                Object[] fila = (Object[]) rsComisione.get(0);
+                                if (fila[0] != null) {
+                                    valComision = new BigDecimal(fila[0].toString().trim());
+                                }
+                                if (fila[1] != null) {
+                                    ctrlComision = fila[1].toString().trim();
+                                }
+                            }
+
+
+                    if (ctrlComision.equals("0")) {
+                try {
+                    String sqlComision = "SELECT comic_val_comic FROM cnxcomic " +
+                                         "WHERE comic_cod_comic = 5 " +
+                                         "AND comic_cod_ofici = :codOfici " +
+                                         "AND comic_cod_empre = :codEmpre";
+                    Query queryComision = entityManager.createNativeQuery(sqlComision);
+                    queryComision.setParameter("codOfici", clientCodOfici);
+                    queryComision.setParameter("codEmpre", clientCodEmpre);
+                    List<?> rsComision = queryComision.getResultList();
+                    if (!rsComision.isEmpty() && rsComision.get(0) != null) {
+                        valComision = new BigDecimal(rsComision.get(0).toString().trim());
+                        System.out.println("DEBUG DIRECTAS: Comisión dinámica recuperada de cnxcomic = [" + valComision + "]");
+                    } else {
+                        System.out.println("DEBUG DIRECTAS: No se encontró comisión en cnxcomic para oficina = [" + clientCodOfici + "]");
+                    }
+                } catch (Exception e) {
+                    System.out.println("DEBUG DIRECTAS: Error al consultar comisión en cnxcomic: " + e.getMessage());
+                    e.printStackTrace();
                 }
-            } catch (Exception e) {
-                System.out.println("DEBUG DIRECTAS: Error al consultar comisión en cnxcomic: " + e.getMessage());
-                e.printStackTrace();
+            }
+
+            if (valComision == null) {
+                response.put("message", "Comisión para transferencias directas no configurada en la base de datos (cnxcomic).");
+                response.put("status", "ERROR_CONFIG_COMISION_INCOMPLETA");
+                transactionManager.rollback(status);
+                return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
             }
             dto.setComission(valComision);
 
@@ -1347,8 +1381,8 @@ public class TransfInterService {
             }
             dto.setCity(oficinaNombre);
 
-            // Asignar Moneda Dinámica (Mapeando moneda local 2 a ISO 840 para USD)
-            String isoCurrency = "840";
+            // Asignar Moneda Dinámica (Mapeando moneda local 2 a ISO USD para USD)
+            String isoCurrency = "USD";
             try {
                 String sqlMoneda = "SELECT moned_sgn_moned FROM cnxmoned " +
                                    "WHERE moned_cod_empre = :codEmpre " +
@@ -1361,7 +1395,7 @@ public class TransfInterService {
                 if (!rsMoneda.isEmpty() && rsMoneda.get(0) != null) {
                     String sgnMoned = rsMoneda.get(0).toString().trim();
                     if (sgnMoned.equals("USD$") || sgnMoned.contains("USD")) {
-                        isoCurrency = "840";
+                        isoCurrency = "USD";
                     }
                     System.out.println("DEBUG DIRECTAS: Moneda dinámica recuperada = [" + sgnMoned + "] -> ISO: [" + isoCurrency + "]");
                 }

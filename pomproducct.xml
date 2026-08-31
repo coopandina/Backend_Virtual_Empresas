@@ -164,11 +164,11 @@
             <version>3.0.3</version>
         </dependency>
 
-        <!-- JavaMail -->
+        <!-- Jakarta Mail (Eclipse Angus - compatible con libEmailSms 12.x) -->
         <dependency>
-            <groupId>com.sun.mail</groupId>
-            <artifactId>javax.mail</artifactId>
-            <version>1.6.1</version>
+            <groupId>org.eclipse.angus</groupId>
+            <artifactId>jakarta.mail</artifactId>
+            <version>2.0.3</version>
         </dependency>
 
         <!-- Servlet API - WildFly la provee -->
@@ -270,7 +270,9 @@
                         WEB-INF/lib/javax.servlet-api-*.jar,
                         WEB-INF/lib/tomcat-embed-*.jar,
                         WEB-INF/lib/logback-classic-*.jar,
-                        WEB-INF/lib/logback-core-*.jar
+                        WEB-INF/lib/logback-core-*.jar,
+                        WEB-INF/lib/javax.mail-*.jar,
+                        WEB-INF/lib/activation-1.1.jar
                     </packagingExcludes>
                 </configuration>
             </plugin>

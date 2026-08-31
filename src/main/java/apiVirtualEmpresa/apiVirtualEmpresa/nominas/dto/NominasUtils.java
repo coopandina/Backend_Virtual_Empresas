@@ -23,6 +23,9 @@ public class NominasUtils {
     private String ctaOrigen;
     private String monto;
     private String codbanco;
+    private String plexaCodEtcptec;
+    private String plexaTipTrans;
+    private String plexaTlfDesti;
     private String codTempDirec;
     private String codTempExter;
     private String nombresDes;

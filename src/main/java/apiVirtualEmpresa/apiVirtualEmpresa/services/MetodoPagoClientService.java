@@ -22,6 +22,59 @@ public class MetodoPagoClientService {
     private final String username;
     private final String password;
     private final EntityManager entityManager;
+    private final java.util.concurrent.atomic.AtomicInteger seqCounter = new java.util.concurrent.atomic.AtomicInteger(1);
+
+    public String generateTxDate(java.util.Date now) {
+        return new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(now);
+    }
+
+    public static class SistecapInfo {
+        public Integer systemid;
+        public String originNetwork;
+        public String canal;
+
+        public SistecapInfo(Integer systemid, String originNetwork, String canal) {
+            this.systemid = systemid;
+            this.originNetwork = originNetwork;
+            this.canal = canal;
+        }
+    }
+
+    public String generateTxId(java.util.Date now) {
+        return generateTxId(now, "2");
+    }
+
+    public String generateTxId(java.util.Date now, String canal) {
+        int seq = seqCounter.getAndUpdate(s -> (s >= 9999 ? 1 : s + 1));
+        String datePart = new java.text.SimpleDateFormat("yyyyMMddHHmm").format(now);
+        return "0562" + (canal != null ? canal : "2") + datePart + String.format("%04d", seq);
+    }
+
+    public String generateEndToEndId(java.util.Date now) {
+        String datePart = new java.text.SimpleDateFormat("yyyyMMddHHmmss").format(now);
+        return datePart + "260226";
+    }
+
+    public java.util.Date obtenerFechaHoraBD() {
+        String fechaYHoraStr = obtenerFechaYHora();
+        try {
+            return new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss").parse(fechaYHoraStr);
+        } catch (Exception e) {
+            return new java.util.Date();
+        }
+    }
+
+    private String obtenerFechaYHora() {
+        try {
+            Query queryFecha = entityManager.createNativeQuery("CALL cnxprc_fecha_hora()");
+            List<Object[]> resultadoFecha = queryFecha.getResultList();
+            if (!resultadoFecha.isEmpty()) {
+                return resultadoFecha.get(0)[2].toString().trim();
+            }
+        } catch (Exception ignored) {
+        }
+        return new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new java.util.Date());
+    }
 
     public MetodoPagoClientService(
             RestTemplate restTemplate,
@@ -37,13 +90,15 @@ public class MetodoPagoClientService {
     }
 
     private String truncate(String val, int maxLen) {
-        if (val == null) return null;
+        if (val == null)
+            return null;
         val = val.trim();
         return val.length() > maxLen ? val.substring(0, maxLen).trim() : val;
     }
 
     private String sanitizeCity(String city) {
-        if (city == null) return null;
+        if (city == null)
+            return null;
         city = city.trim().toUpperCase();
         if (city.startsWith("OFICINA ")) {
             String afterOficina = city.substring(8).trim();
@@ -61,13 +116,15 @@ public class MetodoPagoClientService {
     private void sanitizeRequestAccounts(AccountDTO source, AccountDTO dest, boolean isVerification) {
         if (source != null) {
             source.setAccountHolder(truncate(source.getAccountHolder(), 30));
-            if (source.getCellphone() == null || source.getCellphone().trim().isEmpty() || "null".equalsIgnoreCase(source.getCellphone())) {
+            if (source.getCellphone() == null || source.getCellphone().trim().isEmpty()
+                    || "null".equalsIgnoreCase(source.getCellphone())) {
                 source.setCellphone(null);
             }
             if (isVerification) {
                 source.setEmail(null);
             } else {
-                if (source.getEmail() == null || source.getEmail().trim().isEmpty() || "null".equalsIgnoreCase(source.getEmail())) {
+                if (source.getEmail() == null || source.getEmail().trim().isEmpty()
+                        || "null".equalsIgnoreCase(source.getEmail())) {
                     source.setEmail(null);
                 }
             }
@@ -76,9 +133,10 @@ public class MetodoPagoClientService {
             dest.setAccountHolder(truncate(dest.getAccountHolder(), 30));
             dest.setEmail(null); // Email is always null (removed) for destination account
             if (isVerification) {
-                dest.setCellphone("0000000000");
+                dest.setCellphone("0999999999");
             } else {
-                if (dest.getCellphone() == null || dest.getCellphone().trim().isEmpty() || "null".equalsIgnoreCase(dest.getCellphone())) {
+                if (dest.getCellphone() == null || dest.getCellphone().trim().isEmpty()
+                        || "null".equalsIgnoreCase(dest.getCellphone())) {
                     dest.setCellphone(null);
                 }
             }
@@ -109,19 +167,25 @@ public class MetodoPagoClientService {
             String fiCodeVal = null;
 
             try {
-                String sqlCaptec = "SELECT captec_entity_id, captec_orgn_netw, captec_terminal_id, captec_aba_captec, captec_ficode_captec " +
-                                   "FROM andcaptec " +
-                                   "WHERE captec_cod_empre = 69 AND captec_ctrl_captec = 1";
+                String sqlCaptec = "SELECT captec_entity_id, captec_orgn_netw, captec_terminal_id, captec_aba_captec, captec_ficode_captec "
+                        +
+                        "FROM andcaptec " +
+                        "WHERE captec_cod_empre = 69 AND captec_ctrl_captec = 1";
                 System.out.println("Executing query on 'andcaptec'...");
                 Query queryCaptec = entityManager.createNativeQuery(sqlCaptec);
                 List<Object[]> rsCaptec = queryCaptec.getResultList();
                 if (!rsCaptec.isEmpty() && rsCaptec.get(0) != null) {
                     Object[] row = rsCaptec.get(0);
-                    if (row[0] != null) entityIdVal = row[0].toString().trim();
-                    if (row[1] != null) originNetworkVal = row[1].toString().trim();
-                    if (row[2] != null) terminalIdVal = row[2].toString().trim();
-                    if (row.length > 3 && row[3] != null) abaVal = row[3].toString().trim();
-                    if (row.length > 4 && row[4] != null) fiCodeVal = row[4].toString().trim();
+                    if (row[0] != null)
+                        entityIdVal = row[0].toString().trim();
+                    if (row[1] != null)
+                        originNetworkVal = row[1].toString().trim();
+                    if (row[2] != null)
+                        terminalIdVal = row[2].toString().trim();
+                    if (row.length > 3 && row[3] != null)
+                        abaVal = row[3].toString().trim();
+                    if (row.length > 4 && row[4] != null)
+                        fiCodeVal = row[4].toString().trim();
                     System.out.println("CAPTEC details resolved successfully:");
                     System.out.println("  entityIdVal: " + entityIdVal);
                     System.out.println("  originNetworkVal: " + originNetworkVal);
@@ -136,9 +200,11 @@ public class MetodoPagoClientService {
                 e.printStackTrace();
             }
 
-            if (entityIdVal == null || originNetworkVal == null || terminalIdVal == null || abaVal == null || fiCodeVal == null) {
+            if (entityIdVal == null || originNetworkVal == null || terminalIdVal == null || abaVal == null
+                    || fiCodeVal == null) {
                 System.out.println("ERROR: Missing CAPTEC configuration in database.");
-                throw new IllegalStateException("Configuracion de pasarela CAPTEC no encontrada o incompleta en la base de datos.");
+                throw new IllegalStateException(
+                        "Configuracion de pasarela CAPTEC no encontrada o incompleta en la base de datos.");
             }
 
             request.setEntityId(entityIdVal);
@@ -187,7 +253,7 @@ public class MetodoPagoClientService {
                     request.getSourceAccount().setAccountHolder(truncate(clientName, 30));
                     request.getSourceAccount().setCellphone(clientCellphone);
                     request.getSourceAccount().setEmail(clientEmail);
-                    
+
                     // Query dynamic city from cnxofici
                     String oficinaNombre = "QUITO";
                     try {
@@ -219,7 +285,7 @@ public class MetodoPagoClientService {
                         System.out.println("Error resolving office city for verification: " + e.getMessage());
                     }
                     request.setCity(oficinaNombre);
-                    
+
                     System.out.println("Client details resolved successfully:");
                     System.out.println("  clientIdentification: " + clientIdentification);
                     System.out.println("  clientName: " + clientName);
@@ -238,7 +304,8 @@ public class MetodoPagoClientService {
 
             if (!clientFound) {
                 System.out.println("ERROR: Client details not found in database.");
-                throw new IllegalStateException("Datos del cliente origen no encontrados en la base de datos para la cuenta: " + ctaEnvio);
+                throw new IllegalStateException(
+                        "Datos del cliente origen no encontrados en la base de datos para la cuenta: " + ctaEnvio);
             }
 
             request.getSourceAccount().setFiCode(fiCodeVal);
@@ -246,18 +313,32 @@ public class MetodoPagoClientService {
             System.out.println("=== [DATABASE DEBUG: verifyRecipient] END ===");
         }
 
-        // Resolve systemid dynamically from database and sanitize/truncate account fields
-        request.setSystemid(resolveSystemId(request.getSystemid()));
+        // Resolve systemid dynamically from database and sanitize/truncate account
+        // fields
+        SistecapInfo info = resolveSistecapInfo(request.getSystemid());
+        request.setSystemid(info.systemid);
+        if (info.originNetwork != null && !info.originNetwork.trim().isEmpty()) {
+            request.setOriginNetwork(info.originNetwork);
+        }
+
         sanitizeRequestAccounts(request.getSourceAccount(), request.getDestinationAccount(), true);
         request.setCity(sanitizeCity(request.getCity()));
+
+        java.util.Date now = obtenerFechaHoraBD();
+        String finalTxDate = generateTxDate(now);
+        String finalTxId = generateTxId(now, info.canal);
+        String finalEndToEndId = generateEndToEndId(now);
+        request.setTxDate(finalTxDate);
+        request.setTxId(finalTxId);
+        request.setEndToEndId(finalEndToEndId);
 
         String url = baseUrl + "api/ordenante/validated-entity";
         HttpHeaders headers = createHeaders();
         HttpEntity<ValidatedEntityRequest> entity = new HttpEntity<>(request, headers);
-        
+
         com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
         mapper.enable(com.fasterxml.jackson.databind.SerializationFeature.INDENT_OUTPUT);
-        
+
         System.out.println("=== [GATEWAY DEBUG: verifyRecipient] START ===");
         System.out.println("URL: " + url);
         System.out.println("Headers: " + headers);
@@ -269,7 +350,8 @@ public class MetodoPagoClientService {
         }
 
         try {
-            ResponseEntity<ValidatedEntityResponse> response = restTemplate.postForEntity(url, entity, ValidatedEntityResponse.class);
+            ResponseEntity<ValidatedEntityResponse> response = restTemplate.postForEntity(url, entity,
+                    ValidatedEntityResponse.class);
             System.out.println("Response Status Code: " + response.getStatusCode());
             try {
                 String jsonResponse = mapper.writeValueAsString(response.getBody());
@@ -290,28 +372,42 @@ public class MetodoPagoClientService {
                 }
             } catch (Exception ignored) {
             }
-            throw new RuntimeException("Error al conectar con la pasarela de pagos (validated-entity): " + e.getMessage(), e);
+            throw new RuntimeException(
+                    "Error al conectar con la pasarela de pagos (validated-entity): " + e.getMessage(), e);
         } catch (Exception e) {
             System.out.println("Exception: " + e.getMessage());
             e.printStackTrace();
             System.out.println("=== [GATEWAY DEBUG: verifyRecipient] END (WITH EXCEPTION) ===");
-            throw new RuntimeException("Error al conectar con la pasarela de pagos (validated-entity): " + e.getMessage(), e);
+            throw new RuntimeException(
+                    "Error al conectar con la pasarela de pagos (validated-entity): " + e.getMessage(), e);
         }
     }
 
     public BankTransferResponse executeTransfer(BankTransferRequest request) {
-        // Resolve systemid dynamically from database and sanitize/truncate account fields
-        request.setSystemid(resolveSystemId(request.getSystemid()));
+        SistecapInfo info = resolveSistecapInfo(request.getSystemid());
+        request.setSystemid(info.systemid);
+        if (info.originNetwork != null && !info.originNetwork.trim().isEmpty()) {
+            request.setOriginNetwork(info.originNetwork);
+        }
+
         sanitizeRequestAccounts(request.getSourceAccount(), request.getDestinationAccount(), false);
         request.setCity(sanitizeCity(request.getCity()));
+
+        java.util.Date now = obtenerFechaHoraBD();
+        String finalTxDate = generateTxDate(now);
+        String finalTxId = generateTxId(now, info.canal);
+        String finalEndToEndId = generateEndToEndId(now);
+        request.setTxDate(finalTxDate);
+        request.setTxId(finalTxId);
+        request.setEndToEndId(finalEndToEndId);
 
         String url = baseUrl + "api/ordenante/bank-transfer";
         HttpHeaders headers = createHeaders();
         HttpEntity<BankTransferRequest> entity = new HttpEntity<>(request, headers);
-        
+
         com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
         mapper.enable(com.fasterxml.jackson.databind.SerializationFeature.INDENT_OUTPUT);
-        
+
         System.out.println("=== [GATEWAY DEBUG: executeTransfer] START ===");
         System.out.println("URL: " + url);
         System.out.println("Headers: " + headers);
@@ -323,7 +419,8 @@ public class MetodoPagoClientService {
         }
 
         try {
-            ResponseEntity<BankTransferResponse> response = restTemplate.postForEntity(url, entity, BankTransferResponse.class);
+            ResponseEntity<BankTransferResponse> response = restTemplate.postForEntity(url, entity,
+                    BankTransferResponse.class);
             System.out.println("Response Status Code: " + response.getStatusCode());
             try {
                 String jsonResponse = mapper.writeValueAsString(response.getBody());
@@ -344,39 +441,55 @@ public class MetodoPagoClientService {
                 }
             } catch (Exception ignored) {
             }
-            throw new RuntimeException("Error al conectar con la pasarela de pagos (bank-transfer): " + e.getMessage(), e);
+            throw new RuntimeException("Error al conectar con la pasarela de pagos (bank-transfer): " + e.getMessage(),
+                    e);
         } catch (Exception e) {
             System.out.println("Exception: " + e.getMessage());
             e.printStackTrace();
             System.out.println("=== [GATEWAY DEBUG: executeTransfer] END (WITH EXCEPTION) ===");
-            throw new RuntimeException("Error al conectar con la pasarela de pagos (bank-transfer): " + e.getMessage(), e);
+            throw new RuntimeException("Error al conectar con la pasarela de pagos (bank-transfer): " + e.getMessage(),
+                    e);
         }
     }
 
-    private Integer resolveSystemId(Object systemid) {
-        if (systemid != null) {
+    private SistecapInfo resolveSistecapInfo(Object systemidReq) {
+        Integer systemid = null;
+        if (systemidReq != null) {
             try {
-                return Integer.parseInt(systemid.toString().trim());
-            } catch (Exception ignored) {}
+                systemid = Integer.parseInt(systemidReq.toString().trim());
+            } catch (Exception ignored) {
+            }
         }
-        
+
         Integer systemIdVal = 4; // Fallback default
+        String originNetworkVal = "24";
+        String canalVal = "2";
+
         try {
-            String sqlSys = "SELECT sistecap_cod_sistecap FROM andsistecap " +
-                            "WHERE sistecap_ctrl_habil = 1 AND UPPER(sistecap_abrev_sistecap) IN ('VREM', 'VRES')";
+            String sqlSys = "SELECT sistecap_cod_sistecap, sistecap_orinet_sistecap, sistecap_canal_sistecap FROM andsistecap " +
+                    "WHERE sistecap_ctrl_habil = 1 ";
+            if (systemid != null) {
+                sqlSys += "AND sistecap_cod_sistecap = " + systemid;
+            } else {
+                sqlSys += "AND UPPER(sistecap_abrev_sistecap) IN ('VREM', 'VRES')";
+            }
             Query qSys = entityManager.createNativeQuery(sqlSys);
             List<?> rsSys = qSys.getResultList();
-            if (!rsSys.isEmpty() && rsSys.get(0) != null) {
-                systemIdVal = Integer.parseInt(rsSys.get(0).toString().trim());
-            } else {
-                sqlSys = "SELECT sistecap_cod_sistecap FROM andsistecap WHERE sistecap_ctrl_habil = 1 AND UPPER(sistecap_abrev_sistecap) = 'VRPS'";
+            
+            if (rsSys.isEmpty() && systemid == null) {
+                sqlSys = "SELECT sistecap_cod_sistecap, sistecap_orinet_sistecap, sistecap_canal_sistecap FROM andsistecap WHERE sistecap_ctrl_habil = 1 AND UPPER(sistecap_abrev_sistecap) = 'VRPS'";
                 qSys = entityManager.createNativeQuery(sqlSys);
                 rsSys = qSys.getResultList();
-                if (!rsSys.isEmpty() && rsSys.get(0) != null) {
-                    systemIdVal = Integer.parseInt(rsSys.get(0).toString().trim());
-                }
             }
-        } catch (Exception ignored) {}
-        return systemIdVal;
+
+            if (!rsSys.isEmpty() && rsSys.get(0) != null) {
+                Object[] row = (Object[]) rsSys.get(0);
+                if (row[0] != null) systemIdVal = ((Number) row[0]).intValue();
+                if (row[1] != null) originNetworkVal = row[1].toString().trim();
+                if (row[2] != null) canalVal = row[2].toString().trim();
+            }
+        } catch (Exception ignored) {
+        }
+        return new SistecapInfo(systemIdVal, originNetworkVal, canalVal);
     }
 }

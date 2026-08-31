@@ -13,4 +13,6 @@ public class BankTransferResult {
     private String authorizationNumber;
     private String accountingDate;
     private String cellphone;
+    private String numttran;
+    private String transactionMessage;
 }

@@ -405,10 +405,15 @@ public class AuthService {
                                     SendSMS smsCodigoTemp = new SendSMS();
                                     smsCodigoTemp.sendSecurityCodeSMS(clienNumero, "1150", tokenTemp, "Iniciar Sesion",
                                             FechaIngresoLogin);
-                                    sendEmail enviaCorreoToken = new sendEmail();
-                                    tokenExpirationService.programarExpiracionToken(rudIdenClie, tokenTemp, "8");
-                                    enviaCorreoToken.sendEmailTokenTemp(clienApellidos, clienNombres, FechaIngresoLogin,
-                                            clienEmail, tokenTemp);
+                                            //correo comentado pruebas
+                                    try {
+                                        sendEmail enviaCorreoToken = new sendEmail();
+                                        enviaCorreoToken.sendEmailTokenTemp(clienApellidos, clienNombres, FechaIngresoLogin,
+                                                 clienEmail, tokenTemp);
+                                    } catch (Exception exCorreo) {
+                                        System.err.println("[AuthService] ADVERTENCIA: No se pudo enviar el correo de token OTP. El login continua. Error: " + exCorreo.getMessage());
+                                    }
+                                    //hasta aqui comentado correo
                                     String sqlUpdateEstado = "UPDATE vircodaccess SET codaccess_estado = '0' WHERE codaccess_usuario = :codaccess_cedula AND codaccess_estado = '1' and  codsms_codigo = '8' ";
 
                                     Query resultUpdateEstado = entityManager.createNativeQuery(sqlUpdateEstado);
@@ -689,8 +694,12 @@ public class AuthService {
                                     String clienNombres = row2[0].toString().trim();
                                     String clienEmail = row2[1].toString().trim();
                                     String IpIngreso = codSeguridad.getIpterminal();
-                                    sendEmail emailBloq = new sendEmail();
-                                    emailBloq.sendEmailBloqueo("", clienNombres, FechaHora, clienEmail, IpIngreso);
+                                    try {
+                                        sendEmail emailBloq = new sendEmail();
+                                        emailBloq.sendEmailBloqueo("", clienNombres, FechaHora, clienEmail, IpIngreso);
+                                    } catch (Exception exCorreo) {
+                                        System.err.println("[AuthService] ADVERTENCIA: No se pudo enviar el correo de bloqueo. Error: " + exCorreo.getMessage());
+                                    }
 
                                     String accesoDipTermi = codSeguridad.getIpterminal();
                                     String accesoMacTermi = " ";
@@ -873,10 +882,15 @@ public class AuthService {
             // Enviar SMS y Correo
             SendSMS sms = new SendSMS();
             sms.sendVirtualAccessSMS(clienNumero, "1150", "VIRTUALCOP", FechaIngresoLogin);
-            sendEmail enviarCorreo = new sendEmail();
-            enviarCorreo.sendEmailInicioSesion(clienApellidos, clienNombres, FechaIngresoLogin, ipIngresoLogin,
-                    clienEmail);
-
+            //correo comentado pruebas
+            try {
+                sendEmail enviarCorreo = new sendEmail();
+                enviarCorreo.sendEmailInicioSesion(clienApellidos, clienNombres, FechaIngresoLogin, ipIngresoLogin,
+                         clienEmail);
+            } catch (Exception exCorreo) {
+                System.err.println("[AuthService] ADVERTENCIA: No se pudo enviar el correo de inicio de sesion. El acceso continua. Error: " + exCorreo.getMessage());
+            }
+            // hasta aqui correo comentado
             // Activación definitiva de la sesión y purga de previas
             try {
                 String tokenSession = Obtenertoken.desdeCookie(request);

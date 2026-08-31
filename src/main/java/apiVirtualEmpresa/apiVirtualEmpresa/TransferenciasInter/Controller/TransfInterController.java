@@ -1,5 +1,6 @@
 package apiVirtualEmpresa.apiVirtualEmpresa.TransferenciasInter.Controller;
 
+import apiVirtualEmpresa.apiVirtualEmpresa.TransferenciasInter.Service.ComisionService;
 import apiVirtualEmpresa.apiVirtualEmpresa.TransferenciasInter.Service.TransfInterService;
 import apiVirtualEmpresa.apiVirtualEmpresa.TransferenciasInter.dto.TransfInterUtils;
 import apiVirtualEmpresa.apiVirtualEmpresa.dto.captec.BankTransferRequest;
@@ -17,6 +18,7 @@ import java.util.Map;
 public class TransfInterController {
 
     private final TransfInterService transfInterService;
+    private final ComisionService comisionService;
 
     @GetMapping("/listCtaDebitInter")
     public ResponseEntity<Map<String, Object>> listCuentBeneficiarios(HttpServletRequest request, Authentication authentication) {
@@ -60,5 +62,10 @@ public class TransfInterController {
     @PostMapping("/verificarEstadoCaptec")
     public ResponseEntity<Map<String, Object>> verificarEstadoCaptec(HttpServletRequest request, Authentication authentication) {
         return transfInterService.verificarEstadoCaptec(request, authentication);
+    }
+
+    @GetMapping("/obtenerComision")
+    public ResponseEntity<Map<String, Object>> obtenerComision(HttpServletRequest request, Authentication authentication, @RequestParam String cuenta, @RequestParam String tipo) {
+        return comisionService.calcularComision(request, authentication, cuenta, tipo);
     }
 }

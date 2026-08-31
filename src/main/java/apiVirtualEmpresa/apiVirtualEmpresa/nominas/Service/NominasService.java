@@ -18,6 +18,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.TransactionStatus;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.DefaultTransactionDefinition;
 import sms.SendSMS;
@@ -45,6 +46,10 @@ public class NominasService {
 
     @Autowired
     private PlatformTransactionManager transactionManager;
+
+    @Autowired
+    private apiVirtualEmpresa.apiVirtualEmpresa.services.MetodoPagoClientService metodoPagoClientService;
+
     int intentosRealizadoTokenFallos = 0;
     int intentosRealizadoTokenFallosInterban = 0;
 
@@ -212,11 +217,15 @@ public class NominasService {
             //kguanoluisa, [Se modifico query numNomina valservi=2 para incluir cnxifina y se quitaron filtros codifina. En valservi=1 se igualo a 3 columnas. Se mapean cod_banco y nom_banco en JSON][numnomina, ifina_nom_ifina, plexa_cod_ifina][22/05/2026]
             if (valservi.equals("2")) {
                 sql = """
-                            SELECT DISTINCT plexa_num_plnex AS numnomina, ifi.ifina_nom_ifina, plexa_cod_ifina
+                            SELECT DISTINCT plexa_num_plnex AS numnomina, 
+                                   COALESCE(ifi.ifina_nom_ifina, etc.etcptec_des_entid) AS ifina_nom_ifina, 
+                                   COALESCE(plexa_cod_ifina, plexa_cod_etcptec) AS plexa_cod_ifina,
+                                   plexa_tip_trans
                             FROM andplexa
-                            JOIN cnxifina ifi ON ifi.ifina_cod_ifina = plexa_cod_ifina
+                            LEFT JOIN cnxifina ifi ON ifi.ifina_cod_ifina = plexa_cod_ifina
+                            LEFT JOIN andetcptec etc ON etc.etcptec_cod_etcptec = plexa_cod_etcptec
                             WHERE plexa_ide_clien = :txtideclien
-                              AND plexa_ctr_trans = :tipestad
+                              AND plexa_cod_ctrnomna = :tipestad
                               AND plexa_cod_ctaor = :codctadp
                         """;
             } else {
@@ -261,6 +270,7 @@ public class NominasService {
                 if (valservi.equals("2")) {
                     datos.put("nom_banco", row[1] != null ? row[1].toString().trim() : "");
                     datos.put("cod_banco", row[2] != null ? row[2].toString().trim() : "");
+                    datos.put("tip_trans", row[3] != null ? row[3].toString().trim() : "");
                 }
 
                 allDataList.add(datos);
@@ -339,15 +349,23 @@ public class NominasService {
                 response.put("AllData", List.of(err));
                 return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
             }
-
             if (valservi.equals("2")) {
                 String codbanco = requestData.getCodbanco();
+                if (codbanco == null) {
+                    codbanco = "";
+                }
 
                 String sql;
                 sql = """
-                        SELECT plexa_ide_desti, plexa_nom_desti, plexa_cod_ctade, plexa_val_trans, plexa_cod_plexa, plexa_des_plexa
-                        FROM andplexa WHERE plexa_ide_clien = :ideclien AND plexa_cod_ifina = :cntbnco AND plexa_num_plnex = :numnomina
-                        AND plexa_ctr_trans = :estado 
+                        SELECT plexa_ide_desti, plexa_nom_desti, plexa_cod_ctade, plexa_val_trans, plexa_cod_plexa, plexa_des_plexa,
+                               etc.etcptec_cod_recept AS fiCode, etc.etcptec_cod_ababin AS aba, plexa_cod_tcude AS tipoCuenta,
+                               COALESCE(plexa_cod_ifina, plexa_cod_etcptec) AS codbanco, plexa_tlf_desti
+                        FROM andplexa
+                        LEFT JOIN andetcptec etc ON etc.etcptec_cod_etcptec = plexa_cod_etcptec
+                        WHERE plexa_ide_clien = :ideclien 
+                        AND (:cntbnco = '' OR :cntbnco IS NULL OR plexa_cod_ifina = :cntbnco OR plexa_cod_etcptec = :cntbnco) 
+                        AND plexa_num_plnex = :numnomina
+                        AND plexa_cod_ctrnomna = :estado 
                         """;
 
 
@@ -393,6 +411,22 @@ public class NominasService {
 
                     datos.put("descripcion",
                             row[5] != null ? row[5].toString().trim() : null);
+
+                    datos.put("fiCode",
+                            row[6] != null ? row[6].toString().trim() : "");
+
+                    datos.put("aba",
+                            row[7] != null ? row[7].toString().trim() : "");
+
+                    datos.put("tipoCuenta",
+                            row[8] != null ? row[8].toString().trim() : "");
+
+                    datos.put("codbanco",
+                            row[9] != null ? row[9].toString().trim() : "");
+
+                    datos.put("plexaTlfDesti",
+                            row[10] != null ? row[10].toString().trim() : "");
+
                     allDataList.add(datos);
                 }
 
@@ -532,19 +566,22 @@ public class NominasService {
 
             if (valservi.equals("2")) {
                 String codbanco = requestData.getCodbanco();
+                if (codbanco == null) {
+                    codbanco = "";
+                }
 
                 String sql;
-                if (estado.equals("0")) {
+                if (estado.equals("0") || estado.equals("3")) {
                     sql = """
-                            SELECT plexa_ide_desti, plexa_nom_desti, plexa_cod_ctade, plexa_val_trans, plexa_fec_carga FROM andplexa
-                            WHERE plexa_ide_clien = :ideclien AND plexa_cod_ifina = :cntbnco AND plexa_num_plnex = :numnomina
-                            AND plexa_ctr_trans = :estado AND DATE(plexa_fec_aprob) BETWEEN :inicio AND :fin
+                            SELECT plexa_ide_desti, plexa_nom_desti, plexa_cod_ctade, plexa_val_trans, plexa_fec_carga, plexa_des_desti FROM andplexa
+                            WHERE plexa_ide_clien = :ideclien AND (:cntbnco = '' OR :cntbnco IS NULL OR plexa_cod_ifina = :cntbnco OR plexa_cod_etcptec = :cntbnco) AND plexa_num_plnex = :numnomina
+                            AND plexa_cod_ctrnomna = :estado AND DATE(plexa_fec_aprob) BETWEEN :inicio AND :fin
                             """;
                 } else {
                     sql = """
-                            SELECT plexa_ide_desti, plexa_nom_desti, plexa_cod_ctade, plexa_val_trans, plexa_fec_carga
-                            FROM andplexa WHERE plexa_ide_clien = :ideclien AND plexa_cod_ifina = :cntbnco AND plexa_num_plnex = :numnomina
-                            AND plexa_ctr_trans = :estado AND DATE(plexa_fec_carga) BETWEEN :inicio AND :fin
+                            SELECT plexa_ide_desti, plexa_nom_desti, plexa_cod_ctade, plexa_val_trans, plexa_fec_carga, plexa_des_desti
+                            FROM andplexa WHERE plexa_ide_clien = :ideclien AND (:cntbnco = '' OR :cntbnco IS NULL OR plexa_cod_ifina = :cntbnco OR plexa_cod_etcptec = :cntbnco) AND plexa_num_plnex = :numnomina
+                            AND plexa_cod_ctrnomna = :estado AND DATE(plexa_fec_carga) BETWEEN :inicio AND :fin
                             """;
                 }
 
@@ -589,6 +626,8 @@ public class NominasService {
 
                     datos.put("fec_carga",
                             row[4] != null ? row[4].toString().trim() : null);
+                    datos.put("motivoFallo",
+                            row[5] != null ? row[5].toString().trim() : "Transacción no procesada");
 
                     allDataList.add(datos);
                 }
@@ -598,7 +637,7 @@ public class NominasService {
 
                 String sql;
 
-                if (estado.equals("0")) {
+                if (estado.equals("0") || estado.equals("3")) {
                     sql = """
                                 SELECT plina_cod_ctade, plina_val_trans, plina_ctr_trans,plina_fec_carga,ct.ctadp_cod_clien,trim(cl.clien_ape_clien) || ' ' || trim(cl.clien_nom_clien) AS nombres, plina_fec_aprob, cl.clien_ide_clien
                                             FROM andplina JOIN cnxctadp ct ON ct.ctadp_cod_ctadp = plina_cod_ctade
@@ -743,7 +782,7 @@ public class NominasService {
                 String sql;
                 Query query;
 
-                if ("3".equals(estado)) {
+                if ("TODAS".equals(estado)) {
 
                     sql = """
                                 SELECT 
@@ -752,14 +791,16 @@ public class NominasService {
                                     plexa_cod_ctade,
                                     plexa_val_trans,
                                     plexa_fec_carga,
-                                    plexa_cod_ifina,
+                                    COALESCE(plexa_cod_ifina, plexa_cod_etcptec) AS plexa_cod_ifina,
                                     plexa_num_plnex,
-                                    ifi.ifina_nom_ifina,
+                                    COALESCE(ifi.ifina_nom_ifina, etc.etcptec_des_entid) AS ifina_nom_ifina,
                                     plexa_fec_aprob,
-                                    plexa_ctr_trans,
-                                    plexa_cod_ctaor
+                                    plexa_cod_ctrnomna,
+                                    plexa_cod_ctaor,
+                                    plexa_tip_trans
                                 FROM andplexa
-                                JOIN cnxifina ifi ON ifi.ifina_cod_ifina = plexa_cod_ifina
+                                LEFT JOIN cnxifina ifi ON ifi.ifina_cod_ifina = plexa_cod_ifina
+                                LEFT JOIN andetcptec etc ON etc.etcptec_cod_etcptec = plexa_cod_etcptec
                                 WHERE plexa_ide_clien = :ideclien
                             """;
 
@@ -775,16 +816,18 @@ public class NominasService {
                                     plexa_cod_ctade,
                                     plexa_val_trans,
                                     plexa_fec_carga,
-                                    plexa_cod_ifina,
+                                    COALESCE(plexa_cod_ifina, plexa_cod_etcptec) AS plexa_cod_ifina,
                                     plexa_num_plnex,
-                                    ifi.ifina_nom_ifina,
+                                    COALESCE(ifi.ifina_nom_ifina, etc.etcptec_des_entid) AS ifina_nom_ifina,
                                     plexa_fec_aprob,
-                                    plexa_ctr_trans,
-                                    plexa_cod_ctaor
+                                    plexa_cod_ctrnomna,
+                                    plexa_cod_ctaor,
+                                    plexa_tip_trans
                                 FROM andplexa
-                                JOIN cnxifina ifi ON ifi.ifina_cod_ifina = plexa_cod_ifina
+                                LEFT JOIN cnxifina ifi ON ifi.ifina_cod_ifina = plexa_cod_ifina
+                                LEFT JOIN andetcptec etc ON etc.etcptec_cod_etcptec = plexa_cod_etcptec
                                 WHERE plexa_ide_clien = :ideclien
-                                  AND plexa_ctr_trans = :estado
+                                  AND plexa_cod_ctrnomna = :estado
                             """;
 
                     query = entityManager.createNativeQuery(sql);
@@ -829,6 +872,8 @@ public class NominasService {
                             desEstado = "PENDIENTE";
                         } else if ("0".equals(ctrTrans)) {
                             desEstado = "APROBADO";
+                        } else if ("3".equals(ctrTrans)) {
+                            desEstado = "NO PROCESADA";
                         } else {
                             desEstado = "DESCONOCIDO";
                         }
@@ -838,6 +883,8 @@ public class NominasService {
                             row[10] != null ? row[10].toString().trim() : null);
                     datos.put("estado",
                             row[9] != null ? row[9].toString().trim() : null);
+                    datos.put("tip_trans",
+                            row[11] != null ? row[11].toString().trim() : null);
                     allDataList.add(datos);
                 }
 
@@ -845,7 +892,7 @@ public class NominasService {
                 String sql;
                 Query query;
 
-                if ("3".equals(estado)) {
+                if ("TODAS".equals(estado)) {
                     sql = """
                                 SELECT 
                                     plina_fec_carga,   
@@ -921,6 +968,8 @@ public class NominasService {
                             desEstado = "PENDIENTE";
                         } else if ("0".equals(ctrTrans)) {
                             desEstado = "APROBADO";
+                        } else if ("3".equals(ctrTrans)) {
+                            desEstado = "NO PROCESADA";
                         } else {
                             desEstado = "DESCONOCIDO";
                         }
@@ -1191,6 +1240,27 @@ public class NominasService {
 
             String tokenFromDB = resultsTokenBDD.get(0).toString();
 
+            if (requestDataList.size() == 1 && "INVALIDAR_OTP_ONLY".equals(requestDataList.get(0).getPlexaTipTrans())) {
+                String sqlBloqUser =
+                        "UPDATE vircodaccess " +
+                                "SET codaccess_estado = 0 " +
+                                "WHERE codaccess_cedula = :cliacUsuRuc " +
+                                "AND codaccess_usuario = :ideClieUsu " +
+                                "AND codsms_codigo = :codsms_cod " +
+                                "AND codaccess_codigo_temporal = :cod_sms";
+
+                Query resultBloqUser = entityManager.createNativeQuery(sqlBloqUser);
+                resultBloqUser.setParameter("cod_sms", tokenFromDB);
+                resultBloqUser.setParameter("cliacUsuRuc", cliacUsuRuc);
+                resultBloqUser.setParameter("ideClieUsu", clienIdenti);
+                resultBloqUser.setParameter("codsms_cod", 11);
+                resultBloqUser.executeUpdate();
+
+                response.put("message", "OTP INVALIDADO CON EXITO");
+                response.put("success", true);
+                return new ResponseEntity<>(response, HttpStatus.OK);
+            }
+
             // AQUÍ INICIA EL PROCESAMIENTO POR CADA ITEM
 
             for (NominasUtils dto : requestDataList) {
@@ -1444,28 +1514,30 @@ public class NominasService {
 
             }
 
-            String sqlBloqUser =
-                    "UPDATE vircodaccess " +
-                            "SET codaccess_estado = :estado " +
-                            "WHERE codaccess_cedula = :cliacUsuRuc " +
-                            "AND codaccess_usuario = :ideClieUsu " +
-                            "AND codsms_codigo = :codsms_cod " +
-                            "AND codaccess_codigo_temporal = :cod_sms";
+            if (requestDataList.size() > 1) {
+                String sqlBloqUser =
+                        "UPDATE vircodaccess " +
+                                "SET codaccess_estado = :estado " +
+                                "WHERE codaccess_cedula = :cliacUsuRuc " +
+                                "AND codaccess_usuario = :ideClieUsu " +
+                                "AND codsms_codigo = :codsms_cod " +
+                                "AND codaccess_codigo_temporal = :cod_sms";
 
-            Query resultBloqUser = entityManager.createNativeQuery(sqlBloqUser);
-            resultBloqUser.setParameter("cod_sms", tokenFromDB);
-            resultBloqUser.setParameter("estado", 0);
-            resultBloqUser.setParameter("codsms_cod", 11);
-            resultBloqUser.setParameter("ideClieUsu", clienIdenti);
-            resultBloqUser.setParameter("cliacUsuRuc", cliacUsuRuc);
+                Query resultBloqUser = entityManager.createNativeQuery(sqlBloqUser);
+                resultBloqUser.setParameter("cod_sms", tokenFromDB);
+                resultBloqUser.setParameter("estado", 0);
+                resultBloqUser.setParameter("codsms_cod", 11);
+                resultBloqUser.setParameter("ideClieUsu", clienIdenti);
+                resultBloqUser.setParameter("cliacUsuRuc", cliacUsuRuc);
 
-            int updatedRows = resultBloqUser.executeUpdate();
+                int updatedRows = resultBloqUser.executeUpdate();
 
-            if (updatedRows == 0) {
-                response.put("message", "No se pudo actualizar el estado del código temporal.");
-                response.put("status", "AA026");
+                if (updatedRows == 0) {
+                    response.put("message", "No se pudo actualizar el estado del código temporal.");
+                    response.put("status", "AA026");
 
-                return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+                    return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+                }
             }
 
 
@@ -1682,6 +1754,86 @@ public class NominasService {
 
             String codOfici = fila[1] != null ? fila[1].toString() : null;
 
+            // 1. Obtener Comisión Normal
+            BigDecimal comisionNormal = BigDecimal.ZERO;
+            try {
+                String sqlComision = "SELECT comic_val_comic FROM cnxcomic " +
+                        "WHERE comic_cod_comic = 5 " +
+                        "AND comic_cod_ofici = :codOfici " +
+                        "AND comic_cod_empre = 69";
+                Query queryComision = entityManager.createNativeQuery(sqlComision);
+                queryComision.setParameter("codOfici", codOfici != null ? Integer.valueOf(codOfici.trim()) : 1);
+                List<?> rsComision = queryComision.getResultList();
+                if (!rsComision.isEmpty() && rsComision.get(0) != null) {
+                    comisionNormal = new BigDecimal(rsComision.get(0).toString().trim());
+                }
+            } catch (Exception e) {
+                System.out.println("Error al recuperar comisión normal: " + e.getMessage());
+            }
+
+            // 2. Obtener Comisión Directa
+            BigDecimal comisionDirecta = comisionNormal; // Fallback
+            try {
+                String sqlComisione = "SELECT cmcempr_comic_cmcempr, cmcempr_ctrl_cmcempr FROM andcmcempr " +
+                        "WHERE cmcempr_ide_clien = :idclien ";
+                Query queryComisione = entityManager.createNativeQuery(sqlComisione);
+                queryComisione.setParameter("idclien", clienIdenti);
+
+                List<?> rsComisione = queryComisione.getResultList();
+                String ctrlComision = "0";
+                BigDecimal valComisionEspecial = null;
+                if (!rsComisione.isEmpty() && rsComisione.get(0) != null) {
+                    Object[] filaC = (Object[]) rsComisione.get(0);
+                    if (filaC[0] != null) {
+                        valComisionEspecial = new BigDecimal(filaC[0].toString().trim());
+                    }
+                    if (filaC[1] != null) {
+                        ctrlComision = filaC[1].toString().trim();
+                    }
+                }
+                if ("1".equals(ctrlComision) && valComisionEspecial != null) {
+                    comisionDirecta = valComisionEspecial;
+                }
+            } catch (Exception e) {
+                System.out.println("Error al recuperar comisión directa: " + e.getMessage());
+            }
+
+            // 3. Calcular IVA para comisión normal
+            BigDecimal totalComisionNormal = comisionNormal; // Fallback
+            try {
+                String sqlIva = "CALL andprc_cal_iva(69, :cuenta, :comision)";
+                Query queryIva = entityManager.createNativeQuery(sqlIva);
+                queryIva.setParameter("cuenta", requestDataList.get(0).getCtaOrigen().trim());
+                queryIva.setParameter("comision", comisionNormal.toString());
+                List<?> rsIva = queryIva.getResultList();
+                if (!rsIva.isEmpty() && rsIva.get(0) != null) {
+                    Object[] filaIva = (Object[]) rsIva.get(0);
+                    if (filaIva[2] != null) {
+                        totalComisionNormal = new BigDecimal(filaIva[2].toString().trim());
+                    }
+                }
+            } catch (Exception e) {
+                System.out.println("Error al calcular IVA normal: " + e.getMessage());
+            }
+
+            // 4. Calcular IVA para comisión directa
+            BigDecimal totalComisionDirecta = comisionDirecta; // Fallback
+            try {
+                String sqlIva = "CALL andprc_cal_iva(69, :cuenta, :comision)";
+                Query queryIva = entityManager.createNativeQuery(sqlIva);
+                queryIva.setParameter("cuenta", requestDataList.get(0).getCtaOrigen().trim());
+                queryIva.setParameter("comision", comisionDirecta.toString());
+                List<?> rsIva = queryIva.getResultList();
+                if (!rsIva.isEmpty() && rsIva.get(0) != null) {
+                    Object[] filaIva = (Object[]) rsIva.get(0);
+                    if (filaIva[2] != null) {
+                        totalComisionDirecta = new BigDecimal(filaIva[2].toString().trim());
+                    }
+                }
+            } catch (Exception e) {
+                System.out.println("Error al calcular IVA directo: " + e.getMessage());
+            }
+
             int i = 1;
 
             for (NominasUtils item : requestDataList) {
@@ -1705,11 +1857,13 @@ public class NominasService {
                                 "plexa_cod_clien, plexa_ide_clien, plexa_nom_clien, plexa_cod_ctaor, plexa_val_trans, " +
                                 "plexa_ide_desti, plexa_nom_desti, plexa_cod_ifina, plexa_cod_ctade, plexa_cod_tcude, " +
                                 "plexa_des_plexa, plexa_cod_oropi, plexa_val_comis, plexa_usu_carga, plexa_fec_carga, " +
-                                "plexa_usu_aprob, plexa_fec_aprob, plexa_num_plnex, plexa_num_trans, plexa_ctr_trans) " +
+                                "plexa_usu_aprob, plexa_fec_aprob, plexa_num_plnex, plexa_num_trans, plexa_cod_ctrnomna, " +
+                                "plexa_cod_etcptec, plexa_tip_trans, plexa_tlf_desti) " +
                                 "VALUES (" +
                                 "69, :codOfici, 803, 69, :codOfici, :numSocio, :ideOrigen, :nomOrigen, :ctaOrigen, :valor, " +
-                                ":ideDest, :nomDest, :codbanco, :ctaDest, :tcuent, :desc, 1, 0.36, :usuCarga, CURRENT, " +
-                                "'', NULL, :numSecu, NULL, 1)";
+                                ":ideDest, :nomDest, :codbanco, :ctaDest, :tcuent, :desc, 1, :valComision, :usuCarga, CURRENT, " +
+                                "'', NULL, :numSecu, NULL, 1, " +
+                                ":plexaCodEtcptec, :plexaTipTrans, :plexaTlfDesti)";
 
                 Query insert = entityManager.createNativeQuery(sqlInsertPlexa);
 
@@ -1724,10 +1878,20 @@ public class NominasService {
                 insert.setParameter("nomDest", item.getNombresDes());
                 insert.setParameter("ctaDest", item.getCtaDestino());
                 insert.setParameter("desc", descripcion);
+                BigDecimal valComis = (item.getPlexaCodEtcptec() != null && !item.getPlexaCodEtcptec().trim().isEmpty())
+                        ? totalComisionDirecta : totalComisionNormal;
+                insert.setParameter("valComision", valComis);
                 insert.setParameter("usuCarga", cliacUsuVirtu);
                 insert.setParameter("numSecu", numSecu);
-                insert.setParameter("codbanco", item.getCodbanco());
+                String codBancoVal = item.getCodbanco();
+                if (item.getPlexaCodEtcptec() != null && !item.getPlexaCodEtcptec().trim().isEmpty()) {
+                    codBancoVal = null;
+                }
+                insert.setParameter("codbanco", codBancoVal);
                 insert.setParameter("tcuent", item.getTipoCuenta());
+                insert.setParameter("plexaCodEtcptec", item.getPlexaCodEtcptec());
+                insert.setParameter("plexaTipTrans", item.getPlexaTipTrans());
+                insert.setParameter("plexaTlfDesti", item.getPlexaTlfDesti());
                 insert.executeUpdate();
                 i++;
             }
@@ -1749,13 +1913,13 @@ public class NominasService {
     }
 
 
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public ResponseEntity<Map<String, Object>> acreditarNominaExterna(HttpServletRequest request, Authentication authentication, List<NominasUtils> requestDataList) {
 
         Map<String, Object> response = new HashMap<>();
-        DefaultTransactionDefinition def = new DefaultTransactionDefinition();
-        def.setName("TransferenciaTransaction");
-        def.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRED);
-        TransactionStatus status = transactionManager.getTransaction(def);
+        DefaultTransactionDefinition defCaptec = new DefaultTransactionDefinition();
+        defCaptec.setName("REQUIRES_CAPTEC");
+        defCaptec.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
 
         try {
 
@@ -1780,10 +1944,34 @@ public class NominasService {
             }
 
             if (requestDataList == null || requestDataList.isEmpty()) {
-                transactionManager.rollback(status);
                 response.put("message", "La lista de nóminas está vacía");
                 response.put("status", "ERROR_EMPTY");
                 return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+            }
+
+            if (requestDataList.size() == 1 && "INVALIDAR_OTP_ONLY".equals(requestDataList.get(0).getPlexaTipTrans())) {
+                TransactionStatus statusToken = transactionManager.getTransaction(defCaptec);
+                try {
+                    String sqlcodTemporal =
+                            "UPDATE vircodaccess SET codaccess_estado = 0 " +
+                                    "WHERE codaccess_cedula = :cedula " +
+                                    "AND codaccess_usuario = :usuario " +
+                                    "AND codsms_codigo = 12 " +
+                                    "AND codaccess_codigo_temporal = :token";
+
+                    Query qUpd = entityManager.createNativeQuery(sqlcodTemporal);
+                    qUpd.setParameter("cedula", clienIdenti);
+                    qUpd.setParameter("usuario", cliacUsuVirtu);
+                    qUpd.setParameter("token", requestDataList.get(0).getCodTempExter());
+                    qUpd.executeUpdate();
+                    transactionManager.commit(statusToken);
+                } catch (Exception ex) {
+                    transactionManager.rollback(statusToken);
+                    throw ex;
+                }
+                response.put("message", "OTP INVALIDADO CON EXITO");
+                response.put("status", "DTROK0005");
+                return new ResponseEntity<>(response, HttpStatus.OK);
             }
 
             String sqlBloqueoUsuario = """
@@ -1843,10 +2031,71 @@ public class NominasService {
 
             String tokenFromDB = tokens.get(0).trim();
 
+            if (!tokenFromDB.equals(requestDataList.get(0).getCodTempExter())) {
+                intentosRealizadoTokenFallos++;
+                if (intentosRealizadoTokenFallos >= 3) {
+                    TransactionStatus statusLock = transactionManager.getTransaction(defCaptec);
+                    try {
+                        // Bloquear usuario
+                        String sqlBloqUser = "UPDATE andusvco SET usvco_ctr_bloq = :bloqueo WHERE usvco_ide_clien = :ideClieUsu AND usvco_ide_usvco = :rudIdenClie";
+                        Query resultBloqUser = entityManager.createNativeQuery(sqlBloqUser);
+                        resultBloqUser.setParameter("bloqueo", "0");
+                        resultBloqUser.setParameter("rudIdenClie", cliacUsuVirtu);
+                        resultBloqUser.setParameter("ideClieUsu", clienIdenti);
+
+                        int rowsUpdated = resultBloqUser.executeUpdate();
+                        if (rowsUpdated > 0) {
+                            // Obtener datos para el correo
+                            String sqlDatosCorreoIngreso = "SELECT usvco_nom_usvco, usvco_ema_usvco FROM andusvco WHERE usvco_ide_clien = :usvco_ide_clien AND usvco_ide_usvco = :usvco_ide_usvco";
+                            Query resulDatosCorreoIngreso = entityManager.createNativeQuery(sqlDatosCorreoIngreso);
+                            resulDatosCorreoIngreso.setParameter("usvco_ide_clien", clienIdenti);
+                            resulDatosCorreoIngreso.setParameter("usvco_ide_usvco", cliacUsuVirtu);
+                            Libs fechaHoraService = new Libs(entityManager);
+                            String FechaHora = fechaHoraService.obtenerFechaYHora();
+
+                            List<Object[]> results2 = resulDatosCorreoIngreso.getResultList();
+
+                            for (Object[] row2 : results2) {
+                                String clienNombres = row2[0].toString().trim();
+                                String clienEmail = row2[1].toString().trim();
+                                String IpIngreso = requestDataList.get(0).getIpterminal();
+                                sendEmail emailBloq = new sendEmail();
+                                emailBloq.sendEmailBloqueo("", clienNombres, FechaHora, clienEmail, IpIngreso);
+                            }
+
+                            // desactivar los codigos
+                            String sqlBloqCod = " UPDATE vircodaccess SET codaccess_estado = :bloqueo WHERE codaccess_usuario = :ideClieUsu AND  codaccess_cedula = :cliacUsuRuc AND codsms_codigo = :codsms ";
+                            Query resultBloqcod = entityManager.createNativeQuery(sqlBloqCod);
+                            resultBloqcod.setParameter("bloqueo", 0);
+                            resultBloqcod.setParameter("codsms", 12);
+                            resultBloqcod.setParameter("cliacUsuRuc", clienIdenti);
+                            resultBloqcod.setParameter("ideClieUsu", cliacUsuVirtu);
+                            resultBloqcod.executeUpdate();
+
+                            intentosRealizadoTokenFallos = 0;
+                        }
+                        transactionManager.commit(statusLock);
+                    } catch (Exception e) {
+                        transactionManager.rollback(statusLock);
+                        response.put("message", "Error al intentar bloquear el usuario");
+                        response.put("status", "AA024");
+                        return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+                    }
+                    response.put("message", "Usuario bloqueado por exceder límite de intentos");
+                    response.put("status", "AA025");
+                    return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+                } else {
+                    response.put("message", "Código temporal incorrecto. Intentos restantes: " + (3 - intentosRealizadoTokenFallos));
+                    response.put("status", "AA023");
+                    return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+                }
+            }
 
             for (NominasUtils dto : requestDataList) {
 
-                // ---------------- VALIDACIONES ORIGINALES ----------------
+                // ==================== FASE 1: LECTURAS (sin transacción activa) ====================
+                // Las consultas SELECT se ejecutan sin transacción para no generar bloqueos en Informix.
+                // Esto permite que la pasarela CAPTEC consulte la misma cuenta sin conflictos.
                 String numeroCuentaEnvio = dto.getCtaOrigen();
                 String numeroCtaDestino = dto.getCtaDestino();
                 String descripcionTrf = dto.getDescripcion();
@@ -1858,81 +2107,7 @@ public class NominasService {
                 String cedulaCtaRecibe = dto.getCedulaBenef().trim();
                 Integer tipoctabce = dto.getTipoCuenta();
 
-
-                if (!tokenFromDB.equals(dto.getCodTempExter())) {
-                    intentosRealizadoTokenFallos++;
-                    if (intentosRealizadoTokenFallos >= 3) {
-                        // Bloquear usuario
-                        String sqlBloqUser = "UPDATE andusvco SET usvco_ctr_bloq = :bloqueo WHERE usvco_ide_clien = :ideClieUsu AND usvco_ide_usvco = :rudIdenClie";
-                        Query resultBloqUser = entityManager.createNativeQuery(sqlBloqUser);
-                        resultBloqUser.setParameter("bloqueo", "0");
-                        resultBloqUser.setParameter("rudIdenClie", cliacUsuVirtu);
-                        resultBloqUser.setParameter("ideClieUsu", clienIdenti);
-
-                        try {
-                            int rowsUpdated = resultBloqUser.executeUpdate();
-                            if (rowsUpdated > 0) {
-                                // Obtener datos para el correo
-                                String sqlDatosCorreoIngreso = "SELECT usvco_nom_usvco, usvco_ema_usvco FROM andusvco WHERE usvco_ide_clien = :usvco_ide_clien AND usvco_ide_usvco = :usvco_ide_usvco";
-                                Query resulDatosCorreoIngreso = entityManager.createNativeQuery(sqlDatosCorreoIngreso);
-                                resulDatosCorreoIngreso.setParameter("usvco_ide_clien", clienIdenti);
-                                resulDatosCorreoIngreso.setParameter("usvco_ide_usvco", cliacUsuVirtu);
-                                Libs fechaHoraService = new Libs(entityManager);
-                                String FechaHora = fechaHoraService.obtenerFechaYHora();
-
-                                List<Object[]> results2 = resulDatosCorreoIngreso.getResultList();
-
-                                for (Object[] row2 : results2) {
-                                    String clienNombres = row2[0].toString().trim();
-                                    String clienEmail = row2[1].toString().trim();
-                                    String IpIngreso = dto.getIpterminal();
-                                    sendEmail emailBloq = new sendEmail();
-                                    emailBloq.sendEmailBloqueo("", clienNombres, FechaHora, clienEmail, IpIngreso);
-                                }
-
-
-                                // desactivar los codigos
-                                String sqlBloqCod = " UPDATE vircodaccess SET codaccess_estado = :bloqueo WHERE codaccess_usuario = :ideClieUsu AND  codaccess_cedula = :cliacUsuRuc AND codsms_codigo = :codsms ";
-                                Query resultBloqcod = entityManager.createNativeQuery(sqlBloqCod);
-                                resultBloqcod.setParameter("bloqueo", 0);
-                                resultBloqcod.setParameter("codsms", 12);
-                                resultBloqcod.setParameter("cliacUsuRuc", clienIdenti);
-                                resultBloqcod.setParameter("ideClieUsu", cliacUsuVirtu);
-                                int filasAfectadas = resultBloqcod.executeUpdate();
-
-                                intentosRealizadoTokenFallos = 0;
-                                response.put("message", "Usuario bloqueado por exceder límite de intentos");
-                                response.put("status", "AA025");
-                                return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
-                            }
-                        } catch (Exception e) {
-                            response.put("message", "Error al intentar bloquear el usuario");
-                            response.put("status", "AA024");
-                            return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
-                        }
-                    } else {
-                        response.put("message", "Código temporal incorrecto. Intentos restantes: " + (3 - intentosRealizadoTokenFallos));
-                        response.put("status", "AA023");
-                        return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
-                    }
-                }
-
-
-                String saldoDisponible = obtenerSaldoDisponible(numeroCuentaEnvio);
-                BigDecimal saldoDispoParse = new BigDecimal(saldoDisponible);
-
-                BigDecimal comision = new BigDecimal("0.36");
-                BigDecimal valorsumado = valTransferencia.add(comision).setScale(2, RoundingMode.HALF_UP);
-
-                if (saldoDispoParse.compareTo(valorsumado) < 0) {
-                    response.put("message", "MONTO INSUFICIENTE PARA REALIZAR LA TRANSFERENCIA ");
-                    response.put("error", "ERROR105");
-                    return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
-                }
-
-
                 // CONSULTA CUENTA ORIGEN
-
                 String sqlQuery = """
                             SELECT ctadp_cod_empre,
                                    ctadp_cod_ofici,
@@ -1959,7 +2134,6 @@ public class NominasService {
                     return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
                 }
                 // DATOS CUENTA ORIGEN
-
                 Object[] resultEnvio = results.get(0);
 
                 String clieCodEmpresaEnvio = resultEnvio[0].toString().trim();
@@ -1971,115 +2145,461 @@ public class NominasService {
 
                 String nomApellido = clienApellEnvio + " " + clieNomEnvio;
 
-                // LLAMADA SP SPI
+                BigDecimal valComision = null;
+                String ctrlComision = "0";
 
-                String callTransferProcedure =
-                        "CALL cnxprc_reg_spi01_wb(" +
-                                ":clienCodEmpreEnvio," +
-                                ":clienCodOficiEnvio,'803'," +
-                                ":clienCodEmpreEnvio," +
-                                ":clienCodOficiEnvio," +
-                                ":clienCodEnvio," +
-                                ":clinIdenEnvio," +
-                                ":nomApellido," +
-                                ":numeroCuentaEnvio," +
-                                ":valTransferencia," +
-                                ":cedulaCtaRecibe," +
-                                ":titulaCtaRecibe," +
-                                ":clieIdBancoRecibe," +
-                                ":numeroCtaDestino," +
-                                ":tipoctabce," +
-                                "'TRANSFERENCIAS INTERBANCARIAS EN LINEA'," +
-                                "1,'0.36')";
-
-                Query queryProcedure = entityManager.createNativeQuery(callTransferProcedure);
-
-                queryProcedure.setParameter("clienCodEmpreEnvio", clieCodEmpresaEnvio);
-                queryProcedure.setParameter("clienCodOficiEnvio", clienCodOficiEnvio);
-                queryProcedure.setParameter("clienCodEnvio", clienCodEnvio);
-                queryProcedure.setParameter("clinIdenEnvio", clinIdenEnvio);
-                queryProcedure.setParameter("nomApellido", nomApellido);
-                queryProcedure.setParameter("numeroCuentaEnvio", numeroCuentaEnvio);
-                queryProcedure.setParameter("valTransferencia", valTransferencia);
-                queryProcedure.setParameter("cedulaCtaRecibe", cedulaCtaRecibe);
-                queryProcedure.setParameter("titulaCtaRecibe", titulaCtaRecibe);
-                queryProcedure.setParameter("clieIdBancoRecibe", clieIdBancoRecibe);
-                queryProcedure.setParameter("numeroCtaDestino", numeroCtaDestino);
-                queryProcedure.setParameter("tipoctabce", tipoctabce);
-
-                Object result = queryProcedure.getSingleResult();
-                int returnValue = Integer.parseInt(result.toString());
-
-                Integer numTrans = (result != null && Integer.parseInt(result.toString().trim()) != -999) ? Integer.parseInt(result.toString().trim()) : null;
-
-
-                // REGISTRO CONTABLE
-
-                double valComision = 0.36;
-
-                ResponseEntity<Map<String, Object>> grabar2Response = grabar2(clieCodEmpresaEnvio, clienCodOficiEnvio, clinIdenEnvio,
-                        "0", "803", valComision, 1, nomApellido, "0", "0", numeroCuentaEnvio,
-                        15, "125");
-
-                if (grabar2Response.getStatusCode() != HttpStatus.OK) {
-                    return grabar2Response;
+                if ("1".equals(dto.getPlexaTipTrans())) {
+                    String sqlComisione = "SELECT cmcempr_comic_cmcempr, cmcempr_ctrl_cmcempr FROM andcmcempr " +
+                                                 "WHERE cmcempr_ide_clien = :idclien ";
+                    try {
+                        Query queryComisione = entityManager.createNativeQuery(sqlComisione);
+                        queryComisione.setParameter("idclien", clinIdenEnvio);
+                        List<?> rsComisione = queryComisione.getResultList();
+                        if (!rsComisione.isEmpty() && rsComisione.get(0) != null) {
+                            Object[] fila = (Object[]) rsComisione.get(0);
+                            if (fila[0] != null) {
+                                valComision = new BigDecimal(fila[0].toString().trim());
+                            }
+                            if (fila[1] != null) {
+                                ctrlComision = fila[1].toString().trim();
+                            }
+                        }
+                    } catch (Exception e) {
+                        System.out.println("Error al recuperar comision especial: " + e.getMessage());
+                    }
                 }
 
+                if (ctrlComision.equals("0")) {
+                    try {
+                        String sqlComision = "SELECT comic_val_comic FROM cnxcomic " +
+                                             "WHERE comic_cod_comic = 5 " +
+                                             "AND comic_cod_ofici = :codOfici " +
+                                             "AND comic_cod_empre = :codEmpre";
+                        Query queryComision = entityManager.createNativeQuery(sqlComision);
+                        queryComision.setParameter("codOfici", Integer.valueOf(clienCodOficiEnvio));
+                        queryComision.setParameter("codEmpre", Integer.valueOf(clieCodEmpresaEnvio));
+                        List<?> rsComision = queryComision.getResultList();
+                        if (!rsComision.isEmpty() && rsComision.get(0) != null) {
+                            valComision = new BigDecimal(rsComision.get(0).toString().trim());
+                        }
+                    } catch (Exception e) {
+                        System.out.println("Error al recuperar comisión normal: " + e.getMessage());
+                    }
+                }
 
-                //cambiar estado de noimina
-                String sqlUpdatePlexa = """
-                            UPDATE andplexa
-                            SET plexa_ctr_trans = :estado, plexa_fec_aprob = CURRENT, plexa_usu_aprob = :usu_aprob ,plexa_num_trans = :numTrans
-                            WHERE plexa_cod_plexa = :codPlexa
-                              AND plexa_ide_desti = :ideDesti
-                              AND plexa_cod_cajas = 803
-                              AND plexa_ide_clien = :ideClien
-                        """;
-
-                Query updateQuery = entityManager.createNativeQuery(sqlUpdatePlexa);
-                updateQuery.setParameter("estado", 0);
-                updateQuery.setParameter("ideDesti", cedulaCtaRecibe);
-                updateQuery.setParameter("codPlexa", dto.getCodreg());
-                updateQuery.setParameter("usu_aprob", cliacUsuVirtu);
-                updateQuery.setParameter("numTrans", numTrans);
-                updateQuery.setParameter("ideClien", clienIdenti);
-
-                int filasActualizadas = updateQuery.executeUpdate();
-
-                if (filasActualizadas <= 0) {
-                    response.put("message", "No se pudo actualizar el estado de la transferencia.");
-                    response.put("status", "AA022");
+                if (valComision == null) {
+                    response.put("message", "Comisión no configurada en la base de datos.");
+                    response.put("status", "ERROR_CONFIG_COMISION_INCOMPLETA");
                     return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
                 }
 
+                // Se usa la comisión real transaccionada (valComision de andcmcempr).
+                // No se llama a andprc_cal_iva porque ese SP ignora el parámetro y devuelve
+                // la comisión estándar del canal, sobreescribiendo el valor correcto.
+                BigDecimal totalComision = valComision;
+
+                String saldoDisponible = obtenerSaldoDisponible(numeroCuentaEnvio);
+                BigDecimal saldoDispoParse = new BigDecimal(saldoDisponible);
+                BigDecimal valorsumado = valTransferencia.add(totalComision).setScale(2, RoundingMode.HALF_UP);
+
+                if (saldoDispoParse.compareTo(valorsumado) < 0) {
+                    response.put("message", "MONTO INSUFICIENTE PARA REALIZAR LA TRANSFERENCIA ");
+                    response.put("error", "ERROR105");
+                    return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+                }
+
+                Integer numTrans = null;
+                // Variables compartidas entre FASE 2 y FASE 3 para CAPTEC
+                apiVirtualEmpresa.apiVirtualEmpresa.dto.captec.BankTransferResponse gatewayResponse = null;
+                BigDecimal valComisionCaptec = valComision;
+
+                if ("1".equals(dto.getPlexaTipTrans())) {
+                    // ====== FLUJO TRANSFERENCIA DIRECTA (CAPTEC) ======
+                    // ==================== LECTURAS CAPTEC (sin transacción) ====================
+                    // 1. Obtener datos del banco destino
+                    String destFiCode = "";
+                    String destAba = "";
+                    try {
+                        String sqlDestBank = "SELECT etcptec_cod_recept, etcptec_cod_ababin FROM andetcptec WHERE etcptec_cod_etcptec = :codbanco AND etcptec_ctr_habil = 1";
+                        Query queryDestBank = entityManager.createNativeQuery(sqlDestBank);
+                        queryDestBank.setParameter("codbanco", clieIdBancoRecibe);
+                        List<Object[]> rsDest = queryDestBank.getResultList();
+                        if (!rsDest.isEmpty() && rsDest.get(0) != null) {
+                            destFiCode = rsDest.get(0)[0] != null ? rsDest.get(0)[0].toString().trim() : "";
+                            destAba = rsDest.get(0)[1] != null ? rsDest.get(0)[1].toString().trim() : "";
+                        }
+                    } catch (Exception e) {
+                        System.out.println("Error al recuperar datos del banco destino: " + e.getMessage());
+                    }
+
+                    // 2. Obtener systemid
+                    String systemIdStr = null;
+                    try {
+                        String sqlSys = "SELECT sistecap_cod_sistecap FROM andsistecap " +
+                                        "WHERE sistecap_ctrl_habil = 1 AND UPPER(sistecap_abrev_sistecap) IN ('VREM', 'VRES')";
+                        Query qSys = entityManager.createNativeQuery(sqlSys);
+                        List<?> rsSys = qSys.getResultList();
+                        if (!rsSys.isEmpty()) {
+                            systemIdStr = rsSys.get(0).toString().trim();
+                        } else {
+                            sqlSys = "SELECT sistecap_cod_sistecap FROM andsistecap WHERE sistecap_ctrl_habil = 1 AND UPPER(sistecap_abrev_sistecap) = 'VRPS'";
+                            qSys = entityManager.createNativeQuery(sqlSys);
+                            rsSys = qSys.getResultList();
+                            if (!rsSys.isEmpty()) {
+                                systemIdStr = rsSys.get(0).toString().trim();
+                            }
+                        }
+                    } catch (Exception e) {
+                        System.out.println("Error al recuperar systemid: " + e.getMessage());
+                    }
+
+                    if (systemIdStr == null || systemIdStr.isEmpty()) {
+                        response.put("message", "Configuración de systemid no encontrada o inactiva en la base de datos.");
+                        response.put("status", "ERROR_CONFIG_SYSTEMID_INCOMPLETA");
+                        return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+                    }
+
+                    // 3. Obtener configuración de CAPTEC
+                    String entityIdVal = null;
+                    String originNetworkVal = null;
+                    String terminalIdVal = null;
+                    String sourceAbaVal = "260517";
+                    String sourceFiCodeVal = "0547";
+                    try {
+                        String sqlCaptec = "SELECT captec_entity_id, captec_orgn_netw, captec_terminal_id, captec_aba_captec, captec_ficode_captec " +
+                                           "FROM andcaptec " +
+                                           "WHERE captec_cod_empre = 69 AND captec_ctrl_captec = 1";
+                        Query queryCaptec = entityManager.createNativeQuery(sqlCaptec);
+                        List<Object[]> rsCaptec = queryCaptec.getResultList();
+                        if (!rsCaptec.isEmpty() && rsCaptec.get(0) != null) {
+                            Object[] rowCaptec = rsCaptec.get(0);
+                            entityIdVal = rowCaptec[0] != null ? rowCaptec[0].toString().trim() : null;
+                            originNetworkVal = rowCaptec[1] != null ? rowCaptec[1].toString().trim() : null;
+                            terminalIdVal = rowCaptec[2] != null ? rowCaptec[2].toString().trim() : null;
+                            if (rowCaptec.length > 3 && rowCaptec[3] != null) {
+                                sourceAbaVal = rowCaptec[3].toString().trim();
+                            }
+                            if (rowCaptec.length > 4 && rowCaptec[4] != null) {
+                                sourceFiCodeVal = rowCaptec[4].toString().trim();
+                            }
+                        }
+                    } catch (Exception e) {
+                        System.out.println("Error al recuperar datos de andcaptec: " + e.getMessage());
+                    }
+
+                    if (entityIdVal == null || entityIdVal.isEmpty() ||
+                        originNetworkVal == null || originNetworkVal.isEmpty() ||
+                        terminalIdVal == null || terminalIdVal.isEmpty()) {
+                        response.put("message", "Configuración de pasarela CAPTEC no encontrada o incompleta en la base de datos.");
+                        response.put("status", "ERROR_CONFIG_CAPTEC_INCOMPLETA");
+                        return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+                    }
+
+                    // 4. Obtener correo, teléfono y depósito del ordenante
+                    String clientEmail = "";
+                    String clientCellphone = "";
+                    Integer clientCodDepos = 1;
+                    try {
+                        String sqlEmailPhone = "SELECT FIRST 1 usvco_ema_usvco, usvco_tlf_usvco, ctadp_cod_depos " +
+                                               "FROM andusvco, cnxctadp " +
+                                               "WHERE usvco_ide_clien = :clienIdenti AND usvco_tip_usvco = '1' " +
+                                               "AND ctadp_cod_ctadp = :ctaEnvio";
+                        Query queryEmailPhone = entityManager.createNativeQuery(sqlEmailPhone);
+                        queryEmailPhone.setParameter("clienIdenti", clienIdenti);
+                        queryEmailPhone.setParameter("ctaEnvio", numeroCuentaEnvio);
+                        List<Object[]> rsEP = queryEmailPhone.getResultList();
+                        if (!rsEP.isEmpty() && rsEP.get(0) != null) {
+                            clientEmail = rsEP.get(0)[0] != null ? rsEP.get(0)[0].toString().trim() : "";
+                            clientCellphone = rsEP.get(0)[1] != null ? rsEP.get(0)[1].toString().trim() : "";
+                            clientCodDepos = rsEP.get(0)[2] != null ? Integer.valueOf(rsEP.get(0)[2].toString().trim()) : 1;
+                        }
+                    } catch (Exception e) {
+                        System.out.println("Error al recuperar email/phone/deposito del ordenante: " + e.getMessage());
+                    }
+
+
+
+                    // 6. Moneda
+                    String isoCurrency = "USD";
+                    try {
+                        String sqlMoneda = "SELECT moned_sgn_moned FROM cnxmoned " +
+                                           "WHERE moned_cod_empre = :codEmpre " +
+                                           "AND moned_cod_ofici = :codOfi " +
+                                           "AND moned_cod_moned = 2";
+                        Query queryMoneda = entityManager.createNativeQuery(sqlMoneda);
+                        queryMoneda.setParameter("codEmpre", Integer.valueOf(clieCodEmpresaEnvio));
+                        queryMoneda.setParameter("codOfi", Integer.valueOf(clienCodOficiEnvio));
+                        List<?> rsMoneda = queryMoneda.getResultList();
+                        if (!rsMoneda.isEmpty() && rsMoneda.get(0) != null) {
+                            String sgnMoned = rsMoneda.get(0).toString().trim();
+                            if (sgnMoned.equals("USD$") || sgnMoned.contains("USD")) {
+                                isoCurrency = "USD";
+                            }
+                        }
+                    } catch (Exception e) {
+                        System.out.println("Error al recuperar moneda: " + e.getMessage());
+                    }
+
+                    // 6b. Obtener oficinaNombre
+                    String oficinaNombre = "QUITO";
+                    try {
+                        String sqlOfi = "SELECT ofici_nom_ofici FROM cnxofici WHERE ofici_cod_ofici = :codOfi";
+                        Query qOfi = entityManager.createNativeQuery(sqlOfi);
+                        qOfi.setParameter("codOfi", Integer.valueOf(clienCodOficiEnvio));
+                        List<?> rsOfi = qOfi.getResultList();
+                        if (!rsOfi.isEmpty() && rsOfi.get(0) != null) {
+                            String fullOfiName = rsOfi.get(0).toString().trim().toUpperCase();
+                            oficinaNombre = fullOfiName;
+                            if (fullOfiName.startsWith("OFICINA ")) {
+                                String afterOficina = fullOfiName.substring(8).trim();
+                                String[] parts = afterOficina.split("\\s+");
+                                if (parts.length > 0) {
+                                    oficinaNombre = parts[0];
+                                }
+                            }
+                            if (fullOfiName.contains("QUITO")) {
+                                oficinaNombre = "QUITO";
+                            } else if (fullOfiName.contains("IBARRA")) {
+                                oficinaNombre = "IBARRA";
+                            } else if (fullOfiName.contains("OTAVALO")) {
+                                oficinaNombre = "OTAVALO";
+                            } else if (fullOfiName.contains("LATACUNGA")) {
+                                oficinaNombre = "LATACUNGA";
+                            }
+                        }
+                    } catch (Exception e) {
+                        System.out.println("Error al recuperar nombre de oficina: " + e.getMessage());
+                    }
+
+                    // ==================== FASE 2: LLAMADA HTTP CAPTEC (sin transacción activa) ====================
+                    // No hay bloqueos en Informix durante esta llamada HTTP.
+                    // CAPTEC puede consultar la cuenta origen libremente.
+                    // 7. Construir DTO y llamar a executeTransfer
+                    String sourceIdentType = clinIdenEnvio.length() == 13 ? "20"
+                            : (clinIdenEnvio.length() == 10 ? "10" : "30");
+                    String sourceAccountType = (clientCodDepos == 9) ? "20" : "10";
+
+                    apiVirtualEmpresa.apiVirtualEmpresa.dto.captec.AccountDTO sourceAccount = apiVirtualEmpresa.apiVirtualEmpresa.dto.captec.AccountDTO.builder()
+                            .identificationNumber(clinIdenEnvio)
+                            .identificationType(sourceIdentType)
+                            .accountType(sourceAccountType)
+                            .accountNumber(numeroCuentaEnvio)
+                            .accountHolder(nomApellido.length() > 31 ? nomApellido.substring(0, 31).trim() : nomApellido)
+                            .cellphone(clientCellphone)
+                            .email(clientEmail)
+                            .fiCode(sourceFiCodeVal)
+                            .aba(sourceAbaVal)
+                            .build();
+
+                    String destIdentType = cedulaCtaRecibe.length() == 13 ? "20"
+                            : (cedulaCtaRecibe.length() == 10 ? "10" : "30");
+                    String destAccountType = (tipoctabce != null && tipoctabce == 2) ? "20" : "10";
+
+                    apiVirtualEmpresa.apiVirtualEmpresa.dto.captec.AccountDTO destinationAccount = apiVirtualEmpresa.apiVirtualEmpresa.dto.captec.AccountDTO.builder()
+                            .identificationNumber(cedulaCtaRecibe)
+                            .identificationType(destIdentType)
+                            .accountType(destAccountType)
+                            .accountNumber(numeroCtaDestino)
+                            .accountHolder(titulaCtaRecibe.length() > 31 ? titulaCtaRecibe.substring(0, 31).trim() : titulaCtaRecibe)
+                            .cellphone(dto.getPlexaTlfDesti())
+                            .fiCode(destFiCode)
+                            .aba(destAba)
+                            .build();
+
+                    String truncatedDesc = descripcionTrf != null ? (descripcionTrf.length() > 16 ? descripcionTrf.substring(0, 16).trim() : descripcionTrf) : "";
+                    java.util.Date now = metodoPagoClientService.obtenerFechaHoraBD();
+                    String finalTxDate = metodoPagoClientService.generateTxDate(now);
+                    String finalTxId = metodoPagoClientService.generateTxId(now);
+
+                    apiVirtualEmpresa.apiVirtualEmpresa.dto.captec.BankTransferRequest gatewayDto = apiVirtualEmpresa.apiVirtualEmpresa.dto.captec.BankTransferRequest.builder()
+                            .entityId(entityIdVal)
+                            .originNetwork(originNetworkVal)
+                            .terminalId(terminalIdVal)
+                            .txDate(finalTxDate)
+                            .txId(finalTxId)
+                            .systemid(systemIdStr)
+                            .txtcaja("803")
+                            .sourceAccount(sourceAccount)
+                            .destinationAccount(destinationAccount)
+                            .amount(valTransferencia)
+                            .comission(valComision)
+                            .currency(isoCurrency)
+                            .description(truncatedDesc)
+                            .city(oficinaNombre)
+                            .endToEndId(System.currentTimeMillis() + "-" + dto.getCodreg())
+                            .build();
+
+                    gatewayResponse = metodoPagoClientService.executeTransfer(gatewayDto);
+                    if (gatewayResponse == null || (gatewayResponse.getResult() == null && (gatewayResponse.getStatus() == null || !"000".equals(gatewayResponse.getStatus().getCode())))) {
+                        String errMsg = "Error al ejecutar la transferencia en la pasarela de pagos.";
+                        if (gatewayResponse != null && gatewayResponse.getStatus() != null) {
+                            errMsg = gatewayResponse.getStatus().getDescription() != null && !gatewayResponse.getStatus().getDescription().trim().isEmpty()
+                                     ? gatewayResponse.getStatus().getDescription()
+                                     : gatewayResponse.getStatus().getMessage();
+                        }
+                        // Sin rollback - no hay transacción activa en esta fase
+                        marcarComoNoProcesada(dto.getCodreg(), cedulaCtaRecibe, cliacUsuVirtu, clienIdenti, errMsg, defCaptec);
+                        response.put("message", errMsg);
+                        response.put("status", "ERROR_EJECUCION_PASARELA");
+                        return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+                    }
+
+                    valComisionCaptec = valComision;
+                } // Fin FASE 1 y 2 para CAPTEC (lecturas + HTTP)
+
+                // ==================== FASE 3: ESCRITURAS (transacción REQUIRES_CAPTEC) ====================
+                // Se inicia una transacción física independiente (PROPAGATION_REQUIRES_NEW).
+                // Al hacer commit, los bloqueos se liberan INMEDIATAMENTE antes de la siguiente iteración.
+                TransactionStatus status = transactionManager.getTransaction(defCaptec);
+                try {
+                    if ("1".equals(dto.getPlexaTipTrans())) {
+                        // Registrar contable CAPTEC
+                        ResponseEntity<Map<String, Object>> grabar2Response = grabar2(clieCodEmpresaEnvio, clienCodOficiEnvio, clinIdenEnvio,
+                                "0", "803", valComisionCaptec.doubleValue(), 1, nomApellido, "0", "0", numeroCuentaEnvio,
+                                15, "125");
+
+                        if (grabar2Response.getStatusCode() != HttpStatus.OK) {
+                            transactionManager.rollback(status);
+                            marcarComoNoProcesada(dto.getCodreg(), cedulaCtaRecibe, cliacUsuVirtu, clienIdenti, "Error al registrar contabilidad CAPTEC.", defCaptec);
+                            return grabar2Response;
+                        }
+
+                        try {
+                            if (gatewayResponse.getResult() != null && gatewayResponse.getResult().getNumttran() != null) {
+                                numTrans = Integer.parseInt(gatewayResponse.getResult().getNumttran().trim());
+                            }
+                        } catch (Exception ex) {
+                            System.out.println("No se pudo parsear el número de transacción (numttran) a Integer: " + ex.getMessage());
+                        }
+
+                    } else {
+                        // ====== FLUJO TRANSFERENCIA SPI NORMAL ======
+                        // LLAMADA SP SPI
+                        String callTransferProcedure =
+                                "CALL cnxprc_reg_spi01_wb(" +
+                                        ":clienCodEmpreEnvio," +
+                                        ":clienCodOficiEnvio,'803'," +
+                                        ":clienCodEmpreEnvio," +
+                                        ":clienCodOficiEnvio," +
+                                        ":clienCodEnvio," +
+                                        ":clinIdenEnvio," +
+                                        ":nomApellido," +
+                                        ":numeroCuentaEnvio," +
+                                        ":valTransferencia," +
+                                        ":cedulaCtaRecibe," +
+                                        ":titulaCtaRecibe," +
+                                        ":clieIdBancoRecibe," +
+                                        ":numeroCtaDestino," +
+                                        ":tipoctabce," +
+                                        "'TRANSFERENCIAS INTERBANCARIAS EN LINEA'," +
+                                        "1,:valComisionProc)";
+
+                        Query queryProcedure = entityManager.createNativeQuery(callTransferProcedure);
+                        queryProcedure.setParameter("clienCodEmpreEnvio", clieCodEmpresaEnvio);
+                        queryProcedure.setParameter("clienCodOficiEnvio", clienCodOficiEnvio);
+                        queryProcedure.setParameter("clienCodEnvio", clienCodEnvio);
+                        queryProcedure.setParameter("clinIdenEnvio", clinIdenEnvio);
+                        queryProcedure.setParameter("nomApellido", nomApellido);
+                        queryProcedure.setParameter("numeroCuentaEnvio", numeroCuentaEnvio);
+                        queryProcedure.setParameter("valTransferencia", valTransferencia);
+                        queryProcedure.setParameter("cedulaCtaRecibe", cedulaCtaRecibe);
+                        queryProcedure.setParameter("titulaCtaRecibe", titulaCtaRecibe);
+                        queryProcedure.setParameter("clieIdBancoRecibe", clieIdBancoRecibe);
+                        queryProcedure.setParameter("numeroCtaDestino", numeroCtaDestino);
+                        queryProcedure.setParameter("tipoctabce", tipoctabce);
+                        queryProcedure.setParameter("valComisionProc", totalComision.toString());
+
+                        Object result = queryProcedure.getSingleResult();
+                        int returnValue = Integer.parseInt(result.toString());
+
+                        numTrans = (result != null && Integer.parseInt(result.toString().trim()) != -999) ? Integer.parseInt(result.toString().trim()) : null;
+
+                        // REGISTRO CONTABLE
+                        double valComisionDouble = valComision.doubleValue();
+                        ResponseEntity<Map<String, Object>> grabar2Response = grabar2(clieCodEmpresaEnvio, clienCodOficiEnvio, clinIdenEnvio,
+                                "0", "803", valComisionDouble, 1, nomApellido, "0", "0", numeroCuentaEnvio,
+                                15, "125");
+
+                        if (grabar2Response.getStatusCode() != HttpStatus.OK) {
+                            transactionManager.rollback(status);
+                            marcarComoNoProcesada(dto.getCodreg(), cedulaCtaRecibe, cliacUsuVirtu, clienIdenti, "Error al registrar contabilidad SPI.", defCaptec);
+                            return grabar2Response;
+                        }
+                    }
+
+                    //cambiar estado de nomina y guardar la comision realmente transaccionada
+                    String sqlUpdatePlexa = """
+                                UPDATE andplexa
+                                SET plexa_cod_ctrnomna = :estado, 
+                                    plexa_fec_aprob = CURRENT, 
+                                    plexa_usu_aprob = :usu_aprob, 
+                                    plexa_num_trans = :numTrans,
+                                    plexa_val_comis = :valComis
+                                WHERE plexa_cod_plexa = :codPlexa
+                                  AND plexa_ide_desti = :ideDesti
+                                  AND plexa_cod_cajas = 803
+                                  AND plexa_ide_clien = :ideClien
+                            """;
+
+                    Query updateQuery = entityManager.createNativeQuery(sqlUpdatePlexa);
+                    updateQuery.setParameter("estado", 0);
+                    updateQuery.setParameter("ideDesti", cedulaCtaRecibe);
+                    updateQuery.setParameter("codPlexa", dto.getCodreg());
+                    updateQuery.setParameter("usu_aprob", cliacUsuVirtu);
+                    updateQuery.setParameter("numTrans", numTrans);
+                    updateQuery.setParameter("ideClien", clienIdenti);
+                    updateQuery.setParameter("valComis", totalComision);
+
+                    int filasActualizadas = updateQuery.executeUpdate();
+
+                    if (filasActualizadas <= 0) {
+                        transactionManager.rollback(status);
+                        marcarComoNoProcesada(dto.getCodreg(), cedulaCtaRecibe, cliacUsuVirtu, clienIdenti, "No se pudo actualizar el estado a exitoso.", defCaptec);
+                        response.put("message", "No se pudo actualizar el estado de la transferencia.");
+                        response.put("status", "AA022");
+                        return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+                    }
+
+                    // COMMIT REQUIRES_CAPTEC: libera todos los bloqueos de escritura inmediatamente
+                    transactionManager.commit(status);
+                } catch (Exception ex) {
+                    transactionManager.rollback(status);
+                    marcarComoNoProcesada(dto.getCodreg(), cedulaCtaRecibe, cliacUsuVirtu, clienIdenti, ex.getMessage(), defCaptec);
+                    throw ex;
+                }
             }
 
-            //  INVALIDAR OTP (UNA SOLA VEZ)
 
-            String sqlcodTemporal =
-                    "UPDATE vircodaccess SET codaccess_estado = 0 " +
-                            "WHERE codaccess_cedula = :cedula " +
-                            "AND codaccess_usuario = :usuario " +
-                            "AND codsms_codigo = 12 " +
-                            "AND codaccess_codigo_temporal = :token";
+            if (requestDataList.size() > 1) {
+                //  INVALIDAR OTP (UNA SOLA VEZ)
+                TransactionStatus statusToken = transactionManager.getTransaction(defCaptec);
+                try {
+                    String sqlcodTemporal =
+                            "UPDATE vircodaccess SET codaccess_estado = 0 " +
+                                    "WHERE codaccess_cedula = :cedula " +
+                                    "AND codaccess_usuario = :usuario " +
+                                    "AND codsms_codigo = 12 " +
+                                    "AND codaccess_codigo_temporal = :token";
 
-            Query qUpd = entityManager.createNativeQuery(sqlcodTemporal);
-            qUpd.setParameter("cedula", clienIdenti);
-            qUpd.setParameter("usuario", cliacUsuVirtu);
-            qUpd.setParameter("token", requestDataList.get(0).getCodTempExter());
-            qUpd.executeUpdate();
+                    Query qUpd = entityManager.createNativeQuery(sqlcodTemporal);
+                    qUpd.setParameter("cedula", clienIdenti);
+                    qUpd.setParameter("usuario", cliacUsuVirtu);
+                    qUpd.setParameter("token", requestDataList.get(0).getCodTempExter());
+                    qUpd.executeUpdate();
+                    transactionManager.commit(statusToken);
+                } catch (Exception ex) {
+                    transactionManager.rollback(statusToken);
+                    throw ex;
+                }
+            }
 
-            //  COMMIT FINAL
             intentosRealizadoTokenFallos = 0;
-
-            transactionManager.commit(status);
 
             response.put("message", "TRANSFERENCIAS INTERBANCARIAS REALIZADAS CON ÉXITO !!");
             response.put("status", "DTROK0005");
             return new ResponseEntity<>(response, HttpStatus.OK);
 
         } catch (Exception e) {
-            transactionManager.rollback(status);
             throw new RuntimeException("Error en acreditarNominaExterna: " + e.getMessage(), e);
         }
     }
@@ -2606,6 +3126,32 @@ public class NominasService {
 
     private String eliminarAcentos(String input) {
         return input.replaceAll("[^\\p{ASCII}]", "");
+    }
+
+    private void marcarComoNoProcesada(String codPlexa, String ideDesti, String usuAprob, String ideClien, String errorMsg, DefaultTransactionDefinition defCaptec) {
+        TransactionStatus statusError = transactionManager.getTransaction(defCaptec);
+        try {
+            String truncatedMsg = errorMsg != null ? (errorMsg.length() > 100 ? errorMsg.substring(0, 100).trim() : errorMsg.trim()) : "Transaccion no procesada";
+            String sqlUpdatePlexaError = """
+                        UPDATE andplexa
+                        SET plexa_cod_ctrnomna = 3, plexa_fec_aprob = CURRENT, plexa_usu_aprob = :usu_aprob, plexa_des_desti = :errorMsg
+                        WHERE plexa_cod_plexa = :codPlexa
+                          AND plexa_ide_desti = :ideDesti
+                          AND plexa_cod_cajas = 803
+                          AND plexa_ide_clien = :ideClien
+                    """;
+            Query updateErrorQuery = entityManager.createNativeQuery(sqlUpdatePlexaError);
+            updateErrorQuery.setParameter("codPlexa", codPlexa);
+            updateErrorQuery.setParameter("ideDesti", ideDesti);
+            updateErrorQuery.setParameter("usu_aprob", usuAprob);
+            updateErrorQuery.setParameter("ideClien", ideClien);
+            updateErrorQuery.setParameter("errorMsg", truncatedMsg);
+            updateErrorQuery.executeUpdate();
+            transactionManager.commit(statusError);
+        } catch (Exception exVal) {
+            transactionManager.rollback(statusError);
+            System.out.println("No se pudo actualizar la transferencia a estado 3: " + exVal.getMessage());
+        }
     }
 
 }

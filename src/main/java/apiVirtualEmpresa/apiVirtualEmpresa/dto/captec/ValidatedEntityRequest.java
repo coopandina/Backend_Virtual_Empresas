@@ -14,6 +14,7 @@ public class ValidatedEntityRequest {
     private String originNetwork;
     private String terminalSeq;
     private String terminalId;
+    private String txDate;
     private String txId;
     private Object systemid;
     private AccountDTO sourceAccount;
