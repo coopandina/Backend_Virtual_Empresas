@@ -32,9 +32,7 @@ public class SecurityConfig {
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/auth/**",
-                                "/api/firma-sri/**",
-                                "/api/ordenante/**").permitAll()
+                        .requestMatchers("/api/auth/**", "/api/firma-sri/**", "/api/test-sms/**", "/api/test-sms", "/api/ordenante/**").permitAll()
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
@@ -46,7 +44,7 @@ public class SecurityConfig {
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
 
-        // ✅ Agregar tu IP del frontend con puerto 3000
+        // ??? Agregar tu IP del frontend con puerto 3000
         configuration.setAllowedOrigins(Arrays.asList(
             "http://localhost:5173",
             "http://localhost:5174",
@@ -104,3 +102,4 @@ public class SecurityConfig {
         return new BCryptPasswordEncoder();
     }
 }
+

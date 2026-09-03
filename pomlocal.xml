@@ -16,7 +16,7 @@
     <groupId>apiVirtualEmpresa</groupId>
     <artifactId>apiVirtualEmpresa</artifactId>
     <version>0.0.1-SNAPSHOT</version>
-    <packaging>war</packaging>
+    <packaging>jar</packaging>
     <name>apiVirtualEmpresa</name>
     <description>Virtual Empresas desarrollado por Ing.Oscar Moreira</description>
 
@@ -45,20 +45,9 @@
             <exclusions>
                 <exclusion>
                     <groupId>org.springframework.boot</groupId>
-                    <artifactId>spring-boot-starter-tomcat</artifactId>
-
-                </exclusion>
-                <exclusion>
-                    <groupId>org.springframework.boot</groupId>
                     <artifactId>spring-boot-starter-logging</artifactId>
                 </exclusion>
             </exclusions>
-        </dependency>
-
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-tomcat</artifactId>
-            <scope>provided</scope>
         </dependency>
 
 
@@ -88,7 +77,7 @@
             <optional>true</optional>
         </dependency>
 
-        <!-- Librerías internas -->
+        <!-- LibrerÃ­as internas -->
         <dependency>
             <groupId>ApiVirtualEmpresas</groupId>
             <artifactId>libsVirtual</artifactId>
@@ -106,7 +95,6 @@
             <artifactId>libEmailSms</artifactId>
             <version>13.0.0</version>
         </dependency>
-
         <dependency>
             <groupId>ApiVirtualEmpresas</groupId>
             <artifactId>libClavesCore</artifactId>
@@ -148,31 +136,6 @@
             <version>3.0.3</version>
         </dependency>
 
-        <!-- Jakarta Mail (reemplaza javax.mail para Spring Boot 3) -->
-        <dependency>
-            <groupId>jakarta.mail</groupId>
-            <artifactId>jakarta.mail-api</artifactId>
-            <version>2.1.2</version>
-        </dependency>
-
-        <dependency>
-            <groupId>org.eclipse.angus</groupId>
-            <artifactId>angus-mail</artifactId>
-            <version>2.0.3</version>
-        </dependency>
-
-        <dependency>
-            <groupId>jakarta.activation</groupId>
-            <artifactId>jakarta.activation-api</artifactId>
-            <version>2.1.2</version>
-        </dependency>
-
-        <dependency>
-            <groupId>org.eclipse.angus</groupId>
-            <artifactId>angus-activation</artifactId>
-            <version>2.0.2</version>
-        </dependency>
-
         <!-- Servlet API - WildFly la provee -->
         <dependency>
             <groupId>jakarta.servlet</groupId>
@@ -181,7 +144,7 @@
         </dependency>
 
 
-        <!-- ================== LIBRERÍAS SRI / MITyC ================== -->
+        <!-- ================== LIBRERÃAS SRI / MITyC ================== -->
         <dependency>
             <groupId>sdx.sri</groupId>
             <artifactId>srijava</artifactId>
@@ -328,12 +291,6 @@
             <version>1.6.2</version>
         </dependency>
 
-        <!-- Alternativa: Jakarta Mail (si usas Spring Boot 3) -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-mail</artifactId>
-        </dependency>
-
     </dependencies>
 
     <build>
@@ -368,22 +325,10 @@
                     </excludes>
                 </configuration>
             </plugin>
-
-            <!-- Maven WAR Plugin - Excluir JARs conflictivos para evitar conflictos con WildFly -->
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-war-plugin</artifactId>
-                <version>3.3.2</version>
-                <configuration>
-                    <packagingExcludes>
-                        WEB-INF/lib/jakarta.servlet-api-*.jar,
-                        WEB-INF/lib/javax.servlet-api-*.jar,
-                        WEB-INF/lib/tomcat-embed-*.jar,
-                        WEB-INF/lib/logback-classic-*.jar,
-                        WEB-INF/lib/logback-core-*.jar
-                    </packagingExcludes>
-                </configuration>
-            </plugin>
         </plugins>
     </build>
 </project>
+
+
+
+
