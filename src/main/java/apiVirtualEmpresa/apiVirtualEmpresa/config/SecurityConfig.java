@@ -46,7 +46,7 @@ public class SecurityConfig {
 
         // ??? Agregar tu IP del frontend con puerto 3000
         configuration.setAllowedOrigins(Arrays.asList(
-            "http://localhost:5173",
+            "http://localhost:8089",
             "http://localhost:5174",
             "http://127.0.0.1:5173",
             "http://127.0.0.1:5174",
@@ -59,6 +59,7 @@ public class SecurityConfig {
             "http://192.168.17.72:3000",
             "http://192.168.17.72:4000",
             "http://192.168.17.31",
+                "http://192.168.17.145",
                 "http://172.16.17.27",
                 "http://192.168.17.156",
                 "http://172.16.17.24",

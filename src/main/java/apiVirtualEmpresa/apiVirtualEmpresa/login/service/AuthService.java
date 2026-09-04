@@ -14,6 +14,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import libs.PassSecure;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -27,7 +28,7 @@ import java.util.*;
 @Transactional
 @Service
 @RequiredArgsConstructor
-
+@Slf4j
 public class AuthService {
 
     private final JwtUtil jwtUtil;
@@ -406,13 +407,13 @@ public class AuthService {
                                     smsCodigoTemp.sendSecurityCodeSMS(clienNumero, "1150", tokenTemp, "Iniciar Sesion",
                                             FechaIngresoLogin);
                                             //correo comentado pruebas
-                                    try {
-                                        sendEmail enviaCorreoToken = new sendEmail();
+                                   /*     try {
+                                    sendEmail enviaCorreoToken = new sendEmail();
                                         enviaCorreoToken.sendEmailTokenTemp(clienApellidos, clienNombres, FechaIngresoLogin,
                                                  clienEmail, tokenTemp);
                                     } catch (Exception exCorreo) {
                                         System.err.println("[AuthService] ADVERTENCIA: No se pudo enviar el correo de token OTP. El login continua. Error: " + exCorreo.getMessage());
-                                    }
+                                    }  */
                                     //hasta aqui comentado correo
                                     String sqlUpdateEstado = "UPDATE vircodaccess SET codaccess_estado = '0' WHERE codaccess_usuario = :codaccess_cedula AND codaccess_estado = '1' and  codsms_codigo = '8' ";
 
@@ -538,6 +539,7 @@ public class AuthService {
 
     public ResponseEntity<Map<String, Object>> validarCodSeguridad(HttpServletRequest request,
             CodSegurdiad codSeguridad, Authentication authentication) {
+        log.info("--- Inicio AuthService.validarCodSeguridad ---");
         try {
             Map<String, Object> allData = new HashMap<>();
             Map<String, Object> response = new HashMap<>();
@@ -570,6 +572,7 @@ public class AuthService {
             String rucIdenClie = jwtUtil.getrucIdenClie(token);
             String numSocio = jwtUtil.getcodcliente(token);
 
+
             if (cliacUsuVirtu == null || rucIdenClie == null || numSocio == null) {
                 allData.put("message", "Datos del token incompletos");
                 allData.put("status", "AA022");
@@ -588,6 +591,10 @@ public class AuthService {
                 response.put("AllData", allDataList);
                 return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
             }
+            log.info("cliacUsuVirtu es null" + cliacUsuVirtu);
+            log.info("rucIdenClie es null" + rucIdenClie);
+            log.info("codigo de segurirdd " + codSeguridad);
+
 
             String mensajeValidarCodigoSeguridad = validarCodigoSeguridad(codSeguridad);
             if (mensajeValidarCodigoSeguridad != null) {
@@ -883,13 +890,13 @@ public class AuthService {
             SendSMS sms = new SendSMS();
             sms.sendVirtualAccessSMS(clienNumero, "1150", "VIRTUALCOP", FechaIngresoLogin);
             //correo comentado pruebas
-            try {
+           /* try {
                 sendEmail enviarCorreo = new sendEmail();
                 enviarCorreo.sendEmailInicioSesion(clienApellidos, clienNombres, FechaIngresoLogin, ipIngresoLogin,
                          clienEmail);
             } catch (Exception exCorreo) {
                 System.err.println("[AuthService] ADVERTENCIA: No se pudo enviar el correo de inicio de sesion. El acceso continua. Error: " + exCorreo.getMessage());
-            }
+            } */
             // hasta aqui correo comentado
             // Activación definitiva de la sesión y purga de previas
             try {
