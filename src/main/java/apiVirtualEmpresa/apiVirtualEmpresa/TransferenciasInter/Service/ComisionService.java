@@ -51,6 +51,9 @@ public class ComisionService {
                 return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
             }
 
+            System.out.println("=== DEBUG COMISION ===");
+            System.out.println("Cuenta recibida: [" + cuenta + "], Tipo recibido: [" + tipo + "]");
+
             // 3. Obtener datos del cliente a partir de la cuenta
             String sqlCliente = "SELECT FIRST 1 " +
                     "clien_ide_clien, " +
@@ -67,6 +70,7 @@ public class ComisionService {
             List<Object[]> rsCliente = queryCliente.getResultList();
 
             if (rsCliente.isEmpty()) {
+                System.out.println("DEBUG COMISION: No se encontró la cuenta especificada en cnxctadp.");
                 response.put("status", "ERROR_CTA_NO_ENCONTRADA");
                 response.put("errors", "No se encontró la cuenta especificada.");
                 return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
@@ -77,30 +81,58 @@ public class ComisionService {
             Integer clientCodEmpre = clienteData[1] != null ? Integer.valueOf(clienteData[1].toString().trim()) : 69;
             Integer clientCodOfici = clienteData[2] != null ? Integer.valueOf(clienteData[2].toString().trim()) : 1;
 
+            System.out.println("DEBUG COMISION: Cliente RUC/Identificación: [" + clientIdentification + "], CodOfici: [" + clientCodOfici + "]");
+
             BigDecimal valComision = null;
             String ctrlComision = "0";
 
-            // 4. Buscar comisión personalizada en andcmcempr (SOLO para transferencias directas)
-            if (tipo != null && tipo.trim().equalsIgnoreCase("directa")) {
-                String sqlComisione = "SELECT cmcempr_comic_cmcempr, cmcempr_ctrl_cmcempr FROM andcmcempr " +
-                        "WHERE cmcempr_ide_clien = :idclien ";
-                Query queryComisione = entityManager.createNativeQuery(sqlComisione);
-                queryComisione.setParameter("idclien", clientIdentification);
+            // 4. Buscar comisión personalizada en andcmcempr (Para interbancarias, externas y directas; EXCEPTO propias e internas)
+            if (tipo == null || (!tipo.trim().equalsIgnoreCase("propias") && !tipo.trim().equalsIgnoreCase("interna"))) {
+                try {
+                    System.out.println("DEBUG COMISION: Consultando andcmcempr para idclien = [" + clientIdentification + "]...");
+                    String sqlComisione = "SELECT cmcempr_comic_cmcempr, cmcempr_ctrl_cmcempr FROM andcmcempr " +
+                            "WHERE TRIM(cmcempr_ide_clien) = :idclien ";
+                    Query queryComisione = entityManager.createNativeQuery(sqlComisione);
+                    queryComisione.setParameter("idclien", clientIdentification);
 
-                List<?> rsComisione = queryComisione.getResultList();
-                if (!rsComisione.isEmpty() && rsComisione.get(0) != null) {
-                    Object[] fila = (Object[]) rsComisione.get(0);
-                    if (fila[0] != null) {
-                        valComision = new BigDecimal(fila[0].toString().trim());
+                    List<?> rsComisione = queryComisione.getResultList();
+                    System.out.println("DEBUG COMISION: Registros encontrados en andcmcempr: " + rsComisione.size());
+
+                    if (!rsComisione.isEmpty() && rsComisione.get(0) != null) {
+                        Object[] fila = (Object[]) rsComisione.get(0);
+                        BigDecimal valEspecial = null;
+                        String ctrlCom = "0";
+                        if (fila[0] != null) {
+                            valEspecial = new BigDecimal(fila[0].toString().trim());
+                        }
+                        if (fila[1] != null) {
+                            ctrlCom = fila[1].toString().trim();
+                        }
+                        System.out.println("DEBUG COMISION: andcmcempr -> cmcempr_comic_cmcempr = [" + valEspecial + "], cmcempr_ctrl_cmcempr = [" + ctrlCom + "]");
+
+                        if ("1".equals(ctrlCom) && valEspecial != null) {
+                            valComision = valEspecial;
+                            ctrlComision = "1";
+                            System.out.println("DEBUG COMISION: ¡Comisión especial APLICADA! Valor: " + valComision);
+                        } else {
+                            System.out.println("DEBUG COMISION: ctrlComision no es '1' o valEspecial es null. No se aplica especial.");
+                        }
+                    } else {
+                        System.out.println("DEBUG COMISION: No se encontró registro en andcmcempr para RUC: " + clientIdentification);
                     }
-                    if (fila[1] != null) {
-                        ctrlComision = fila[1].toString().trim();
-                    }
+                } catch (Exception e) {
+                    System.out.println("DEBUG COMISION: Excepción al consultar andcmcempr (se cancela la operación): " + e.getMessage());
+                    response.put("status", "ERROR_TABLA_COMISION");
+                    response.put("errors", "Error de base de datos al consultar la configuración de comisión: " + e.getMessage());
+                    return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
                 }
+            } else {
+                System.out.println("DEBUG COMISION: Tipo '" + tipo + "' es propia/interna, se omite andcmcempr.");
             }
 
             // 5. Si no tiene comisión especial, buscar en cnxcomic
             if (ctrlComision.equals("0")) {
+                System.out.println("DEBUG COMISION: Buscando comisión general en cnxcomic...");
                 String sqlComision = "SELECT comic_val_comic FROM cnxcomic " +
                         "WHERE comic_cod_comic = 5 " +
                         "AND comic_cod_ofici = :codOfici " +
@@ -111,6 +143,9 @@ public class ComisionService {
                 List<?> rsComision = queryComision.getResultList();
                 if (!rsComision.isEmpty() && rsComision.get(0) != null) {
                     valComision = new BigDecimal(rsComision.get(0).toString().trim());
+                    System.out.println("DEBUG COMISION: Comisión obtenida de cnxcomic: " + valComision);
+                } else {
+                    System.out.println("DEBUG COMISION: No se encontró registro en cnxcomic.");
                 }
             }
 
@@ -121,6 +156,7 @@ public class ComisionService {
             }
 
             // 6. Llamar al procedimiento andprc_cal_iva para calcular el IVA
+            System.out.println("DEBUG COMISION: Calculando IVA con y enviando comisionBase = [" + valComision + "]...");
             String sqlIva = "CALL andprc_cal_iva(:codEmpre, :cuenta, :comision)";
             Query queryIva = entityManager.createNativeQuery(sqlIva);
             queryIva.setParameter("codEmpre", clientCodEmpre);
@@ -135,12 +171,14 @@ public class ComisionService {
                 BigDecimal valorComision = filaIva[1] != null ? new BigDecimal(filaIva[1].toString().trim()) : valComision;
                 BigDecimal totalIvaComision = filaIva[2] != null ? new BigDecimal(filaIva[2].toString().trim()) : valComision;
 
+                System.out.println("DEBUG COMISION: Respuesta de andprc_cal_iva -> IVA: [" + valorIva + "], Comisión: [" + valorComision + "], Total: [" + totalIvaComision + "]");
+
                 response.put("success", true);
                 response.put("comision", valorComision.doubleValue());
                 response.put("iva", valorIva.doubleValue());
                 response.put("total", totalIvaComision.doubleValue());
             } else {
-                // Fallback: si el procedimiento no devuelve datos, calcular manualmente
+                System.out.println("DEBUG COMISION: andprc_cal_iva no devolvió resultados. Usando fallback de comisión pura: " + valComision);
                 response.put("success", true);
                 response.put("comision", valComision.doubleValue());
                 response.put("iva", 0.0);

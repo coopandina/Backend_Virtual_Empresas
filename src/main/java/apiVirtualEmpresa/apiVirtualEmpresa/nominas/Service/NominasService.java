@@ -1679,6 +1679,7 @@ public class NominasService {
     //CARGAR NOMINAS EXTERNAS
 
 
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public ResponseEntity<Map<String, Object>> cargaNominaExterna(HttpServletRequest request, Authentication authentication, List<NominasUtils> requestDataList) {
 
         Map<String, Object> response = new HashMap<>();
@@ -1708,55 +1709,70 @@ public class NominasService {
                 return new ResponseEntity<>(err, HttpStatus.BAD_REQUEST);
             }
 
+            // =====================================================================
+            // FASE 1: CONSULTAS PREVIAS (SIN TRANSACCIÓN ACTIVA)
+            // Si alguna falla aquí, no se abre transacción y no se inserta nada.
+            // =====================================================================
+
             // OBTENER SECUENCIA
-            String sql1 = """
-                    SELECT  max(plexa_num_plnex) as numsec
-                    FROM andplexa 
-                    WHERE plexa_cod_ctaor = :ctaOrigen
-                      AND plexa_ide_clien = :cliacUsu
-                    """;
+            DefaultTransactionDefinition defRead = new DefaultTransactionDefinition();
+            defRead.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+            TransactionStatus statusRead = transactionManager.getTransaction(defRead);
 
-            Query query1 = entityManager.createNativeQuery(sql1);
-            query1.setParameter("ctaOrigen", requestDataList.get(0).getCtaOrigen());
-            query1.setParameter("cliacUsu", clienIdenti);
-
-            Object result = query1.getSingleResult();
-
-            int numSecu = (result != null) ? Integer.parseInt(result.toString()) + 1 : 1;
-
-            if (numSecu <= 0) {
-                Map<String, Object> err = new HashMap<>();
-                err.put("status", "AA022");
-                err.put("errors", "Error al obtener el número de secuencia externa.");
-                response.put("success", false);
-                response.put("AllData", List.of(err));
-                return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
-            }
-
-
-            // OBTENER NOMBRE CLIENTE ORIGEN
-            String sqlNom = """
-                       SELECT TRIM(cl.clien_ape_clien) || ' ' || TRIM(cl.clien_nom_clien),
-                            cl.clien_cod_ofici
-                        FROM cnxctadp c
-                        JOIN cnxclien cl ON cl.clien_cod_clien = c.ctadp_cod_clien
-                        WHERE c.ctadp_cod_ctadp = :ctaOrigen
-                          AND cl.clien_ide_clien = :identificacion
-                    """;
-
-            Query qNom = entityManager.createNativeQuery(sqlNom);
-            qNom.setParameter("ctaOrigen", requestDataList.get(0).getCtaOrigen());
-            qNom.setParameter("identificacion", clienIdenti);
-
-            Object[] fila = (Object[]) qNom.getSingleResult();
-
-            String nombresOrigen = (String) fila[0];
-
-            String codOfici = fila[1] != null ? fila[1].toString() : null;
-
-            // 1. Obtener Comisión Normal
+            int numSecu;
+            String nombresOrigen;
+            String codOfici;
             BigDecimal comisionNormal = BigDecimal.ZERO;
+            BigDecimal comisionDirecta;
+            BigDecimal totalComisionNormal;
+            BigDecimal totalComisionDirecta;
+
             try {
+                String sql1 = """
+                        SELECT  max(plexa_num_plnex) as numsec
+                        FROM andplexa 
+                        WHERE plexa_cod_ctaor = :ctaOrigen
+                          AND plexa_ide_clien = :cliacUsu
+                        """;
+
+                Query query1 = entityManager.createNativeQuery(sql1);
+                query1.setParameter("ctaOrigen", requestDataList.get(0).getCtaOrigen());
+                query1.setParameter("cliacUsu", clienIdenti);
+
+                Object result = query1.getSingleResult();
+
+                numSecu = (result != null) ? Integer.parseInt(result.toString()) + 1 : 1;
+
+                if (numSecu <= 0) {
+                    transactionManager.rollback(statusRead);
+                    Map<String, Object> err = new HashMap<>();
+                    err.put("status", "AA022");
+                    err.put("errors", "Error al obtener el número de secuencia externa.");
+                    response.put("success", false);
+                    response.put("AllData", List.of(err));
+                    return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+                }
+
+                // OBTENER NOMBRE CLIENTE ORIGEN
+                String sqlNom = """
+                           SELECT TRIM(cl.clien_ape_clien) || ' ' || TRIM(cl.clien_nom_clien),
+                                cl.clien_cod_ofici
+                            FROM cnxctadp c
+                            JOIN cnxclien cl ON cl.clien_cod_clien = c.ctadp_cod_clien
+                            WHERE c.ctadp_cod_ctadp = :ctaOrigen
+                              AND cl.clien_ide_clien = :identificacion
+                        """;
+
+                Query qNom = entityManager.createNativeQuery(sqlNom);
+                qNom.setParameter("ctaOrigen", requestDataList.get(0).getCtaOrigen());
+                qNom.setParameter("identificacion", clienIdenti);
+
+                Object[] fila = (Object[]) qNom.getSingleResult();
+
+                nombresOrigen = (String) fila[0];
+                codOfici = fila[1] != null ? fila[1].toString() : null;
+
+                // 1. Obtener Comisión Normal
                 String sqlComision = "SELECT comic_val_comic FROM cnxcomic " +
                         "WHERE comic_cod_comic = 5 " +
                         "AND comic_cod_ofici = :codOfici " +
@@ -1767,147 +1783,190 @@ public class NominasService {
                 if (!rsComision.isEmpty() && rsComision.get(0) != null) {
                     comisionNormal = new BigDecimal(rsComision.get(0).toString().trim());
                 }
+
+                // 2. Obtener Comisión Directa
+                comisionDirecta = comisionNormal; // Fallback a comisión normal
+                try {
+                    String sqlComisione = "SELECT cmcempr_comic_cmcempr, cmcempr_ctrl_cmcempr FROM andcmcempr " +
+                            "WHERE cmcempr_ide_clien = :idclien ";
+                    Query queryComisione = entityManager.createNativeQuery(sqlComisione);
+                    queryComisione.setParameter("idclien", clienIdenti);
+
+                    List<?> rsComisione = queryComisione.getResultList();
+                    String ctrlComision = "0";
+                    BigDecimal valComisionEspecial = null;
+                    if (!rsComisione.isEmpty() && rsComisione.get(0) != null) {
+                        Object[] filaC = (Object[]) rsComisione.get(0);
+                        if (filaC[0] != null) {
+                            valComisionEspecial = new BigDecimal(filaC[0].toString().trim());
+                        }
+                        if (filaC[1] != null) {
+                            ctrlComision = filaC[1].toString().trim();
+                        }
+                    }
+                    if ("1".equals(ctrlComision) && valComisionEspecial != null) {
+                        comisionDirecta = valComisionEspecial;
+                    }
+                } catch (Exception e) {
+                    // Si andcmcempr no existe, se usa comisionNormal como fallback
+                    System.out.println("Aviso: tabla andcmcempr no disponible, se usa comisión normal como fallback: " + e.getMessage());
+                    comisionDirecta = comisionNormal;
+                }
+
+                // 3. Calcular IVA para comisión normal
+                totalComisionNormal = comisionNormal; // Fallback
+                try {
+                    String sqlIva = "CALL andprc_cal_iva(69, :cuenta, :comision)";
+                    Query queryIva = entityManager.createNativeQuery(sqlIva);
+                    queryIva.setParameter("cuenta", requestDataList.get(0).getCtaOrigen().trim());
+                    queryIva.setParameter("comision", comisionNormal.toString());
+                    List<?> rsIva = queryIva.getResultList();
+                    if (!rsIva.isEmpty() && rsIva.get(0) != null) {
+                        Object[] filaIva = (Object[]) rsIva.get(0);
+                        if (filaIva[2] != null) {
+                            totalComisionNormal = new BigDecimal(filaIva[2].toString().trim());
+                        }
+                    }
+                } catch (Exception e) {
+                    System.out.println("Aviso: error al calcular IVA normal, se usa comisión sin IVA: " + e.getMessage());
+                }
+
+                // 4. Calcular IVA para comisión directa
+                totalComisionDirecta = comisionDirecta; // Fallback
+                try {
+                    String sqlIva = "CALL andprc_cal_iva(69, :cuenta, :comision)";
+                    Query queryIva = entityManager.createNativeQuery(sqlIva);
+                    queryIva.setParameter("cuenta", requestDataList.get(0).getCtaOrigen().trim());
+                    queryIva.setParameter("comision", comisionDirecta.toString());
+                    List<?> rsIva = queryIva.getResultList();
+                    if (!rsIva.isEmpty() && rsIva.get(0) != null) {
+                        Object[] filaIva = (Object[]) rsIva.get(0);
+                        if (filaIva[2] != null) {
+                            totalComisionDirecta = new BigDecimal(filaIva[2].toString().trim());
+                        }
+                    }
+                } catch (Exception e) {
+                    System.out.println("Aviso: error al calcular IVA directo, se usa comisión sin IVA: " + e.getMessage());
+                }
+
+                // Fase de lectura completada exitosamente
+                transactionManager.commit(statusRead);
+
             } catch (Exception e) {
-                System.out.println("Error al recuperar comisión normal: " + e.getMessage());
+                // Si falla cualquier consulta previa crítica (secuencia, nombre, comisión normal),
+                // se hace rollback de la transacción de lectura y se aborta TODO el proceso.
+                // No se ha insertado nada en andplexa.
+                try {
+                    if (statusRead != null && !statusRead.isCompleted()) {
+                        transactionManager.rollback(statusRead);
+                    }
+                } catch (Exception rollbackEx) {
+                    System.out.println("Aviso en rollback de lectura: " + rollbackEx.getMessage());
+                }
+                throw new RuntimeException("Error en consultas previas de cargaNominaExterna (no se insertó ningún registro): " + e.getMessage(), e);
             }
 
-            // 2. Obtener Comisión Directa
-            BigDecimal comisionDirecta = comisionNormal; // Fallback
+            // =====================================================================
+            // FASE 2: INSERCIÓN EN LOTE (TRANSACCIÓN INDEPENDIENTE CON ROLLBACK)
+            // Solo se ejecuta si la Fase 1 fue exitosa.
+            // Si cualquier INSERT falla, se hace rollback total de todos los INSERTs.
+            // =====================================================================
+
+            DefaultTransactionDefinition defInsert = new DefaultTransactionDefinition();
+            defInsert.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+            TransactionStatus statusInsert = transactionManager.getTransaction(defInsert);
+
             try {
-                String sqlComisione = "SELECT cmcempr_comic_cmcempr, cmcempr_ctrl_cmcempr FROM andcmcempr " +
-                        "WHERE cmcempr_ide_clien = :idclien ";
-                Query queryComisione = entityManager.createNativeQuery(sqlComisione);
-                queryComisione.setParameter("idclien", clienIdenti);
+                int i = 1;
 
-                List<?> rsComisione = queryComisione.getResultList();
-                String ctrlComision = "0";
-                BigDecimal valComisionEspecial = null;
-                if (!rsComisione.isEmpty() && rsComisione.get(0) != null) {
-                    Object[] filaC = (Object[]) rsComisione.get(0);
-                    if (filaC[0] != null) {
-                        valComisionEspecial = new BigDecimal(filaC[0].toString().trim());
+                for (NominasUtils item : requestDataList) {
+
+                    String descripcion = item.getDescripcion();
+
+                    if (item.getIdeClien() == null || item.getCtaDestino() == null ||
+                            item.getMonto() == null || item.getCtaOrigen() == null ||
+                            item.getDescripcion() == null) {
+
+                        Map<String, Object> err = new HashMap<>();
+                        err.put("message", "Datos incompletos en el registro " + i);
+                        err.put("success", false);
+                        allDataList.add(err);
+                        continue;
                     }
-                    if (filaC[1] != null) {
-                        ctrlComision = filaC[1].toString().trim();
+
+                    String sqlInsertPlexa =
+                            "INSERT INTO andplexa (" +
+                                    "plexa_cod_empre, plexa_cod_ofici, plexa_cod_cajas, plexa_cod_cliem, plexa_cod_cliof, " +
+                                    "plexa_cod_clien, plexa_ide_clien, plexa_nom_clien, plexa_cod_ctaor, plexa_val_trans, " +
+                                    "plexa_ide_desti, plexa_nom_desti, plexa_cod_ifina, plexa_cod_ctade, plexa_cod_tcude, " +
+                                    "plexa_des_plexa, plexa_cod_oropi, plexa_val_comis, plexa_usu_carga, plexa_fec_carga, " +
+                                    "plexa_usu_aprob, plexa_fec_aprob, plexa_num_plnex, plexa_num_trans, plexa_cod_ctrnomna, " +
+                                    "plexa_cod_etcptec, plexa_tip_trans, plexa_tlf_desti) " +
+                                    "VALUES (" +
+                                    "69, :codOfici, 803, 69, :codOfici, :numSocio, :ideOrigen, :nomOrigen, :ctaOrigen, :valor, " +
+                                    ":ideDest, :nomDest, :codbanco, :ctaDest, :tcuent, :desc, 1, :valComision, :usuCarga, CURRENT, " +
+                                    "'', NULL, :numSecu, NULL, 1, " +
+                                    ":plexaCodEtcptec, :plexaTipTrans, :plexaTlfDesti)";
+
+                    Query insert = entityManager.createNativeQuery(sqlInsertPlexa);
+
+                    insert.setParameter("codOfici", codOfici);
+                    insert.setParameter("numSocio", numSocio);
+                    insert.setParameter("ideOrigen", clienIdenti);
+                    insert.setParameter("nomOrigen", nombresOrigen);
+                    insert.setParameter("ctaOrigen", item.getCtaOrigen());
+                    BigDecimal valor = new BigDecimal(item.getMonto().trim());
+                    insert.setParameter("valor", valor);
+                    insert.setParameter("ideDest", item.getIdeClien());
+                    insert.setParameter("nomDest", item.getNombresDes());
+                    insert.setParameter("ctaDest", item.getCtaDestino());
+                    insert.setParameter("desc", descripcion);
+                    BigDecimal valComis = (item.getPlexaCodEtcptec() != null && !item.getPlexaCodEtcptec().trim().isEmpty())
+                            ? totalComisionDirecta : totalComisionNormal;
+                    insert.setParameter("valComision", valComis);
+                    insert.setParameter("usuCarga", cliacUsuVirtu);
+                    insert.setParameter("numSecu", numSecu);
+                    String codBancoVal = item.getCodbanco();
+                    if (item.getPlexaCodEtcptec() != null && !item.getPlexaCodEtcptec().trim().isEmpty()) {
+                        codBancoVal = null;
                     }
+                    insert.setParameter("codbanco", codBancoVal);
+                    insert.setParameter("tcuent", item.getTipoCuenta());
+                    insert.setParameter("plexaCodEtcptec", item.getPlexaCodEtcptec());
+                    insert.setParameter("plexaTipTrans", item.getPlexaTipTrans());
+                    insert.setParameter("plexaTlfDesti", item.getPlexaTlfDesti());
+                    insert.executeUpdate();
+                    i++;
                 }
-                if ("1".equals(ctrlComision) && valComisionEspecial != null) {
-                    comisionDirecta = valComisionEspecial;
-                }
+
+                // FASE 3: COMMIT - Todos los INSERTs fueron exitosos
+                transactionManager.commit(statusInsert);
+
+                Map<String, Object> resumen = new HashMap<>();
+                resumen.put("registrosProcesados", i - 1);
+                resumen.put("message", "Nominas Externas cargadas de manera correcta");
+                allDataList.add(resumen);
+                response.put("success", true);
+                response.put("AllData", allDataList);
+
+                return new ResponseEntity<>(response, HttpStatus.OK);
+
             } catch (Exception e) {
-                System.out.println("Error al recuperar comisión directa: " + e.getMessage());
-            }
-
-            // 3. Calcular IVA para comisión normal
-            BigDecimal totalComisionNormal = comisionNormal; // Fallback
-            try {
-                String sqlIva = "CALL andprc_cal_iva(69, :cuenta, :comision)";
-                Query queryIva = entityManager.createNativeQuery(sqlIva);
-                queryIva.setParameter("cuenta", requestDataList.get(0).getCtaOrigen().trim());
-                queryIva.setParameter("comision", comisionNormal.toString());
-                List<?> rsIva = queryIva.getResultList();
-                if (!rsIva.isEmpty() && rsIva.get(0) != null) {
-                    Object[] filaIva = (Object[]) rsIva.get(0);
-                    if (filaIva[2] != null) {
-                        totalComisionNormal = new BigDecimal(filaIva[2].toString().trim());
+                // ROLLBACK TOTAL: Si cualquier INSERT falla, se deshacen TODOS los registros insertados
+                try {
+                    if (statusInsert != null && !statusInsert.isCompleted()) {
+                        transactionManager.rollback(statusInsert);
                     }
+                } catch (Exception rollbackEx) {
+                    System.out.println("Aviso en rollback de inserción: " + rollbackEx.getMessage());
                 }
-            } catch (Exception e) {
-                System.out.println("Error al calcular IVA normal: " + e.getMessage());
+                throw new RuntimeException("Error en inserción de cargaNominaExterna (se realizó rollback, no quedó ningún registro en andplexa): " + e.getMessage(), e);
             }
 
-            // 4. Calcular IVA para comisión directa
-            BigDecimal totalComisionDirecta = comisionDirecta; // Fallback
-            try {
-                String sqlIva = "CALL andprc_cal_iva(69, :cuenta, :comision)";
-                Query queryIva = entityManager.createNativeQuery(sqlIva);
-                queryIva.setParameter("cuenta", requestDataList.get(0).getCtaOrigen().trim());
-                queryIva.setParameter("comision", comisionDirecta.toString());
-                List<?> rsIva = queryIva.getResultList();
-                if (!rsIva.isEmpty() && rsIva.get(0) != null) {
-                    Object[] filaIva = (Object[]) rsIva.get(0);
-                    if (filaIva[2] != null) {
-                        totalComisionDirecta = new BigDecimal(filaIva[2].toString().trim());
-                    }
-                }
-            } catch (Exception e) {
-                System.out.println("Error al calcular IVA directo: " + e.getMessage());
-            }
-
-            int i = 1;
-
-            for (NominasUtils item : requestDataList) {
-
-                String descripcion = item.getDescripcion();
-
-                if (item.getIdeClien() == null || item.getCtaDestino() == null ||
-                        item.getMonto() == null || item.getCtaOrigen() == null ||
-                        item.getDescripcion() == null) {
-
-                    Map<String, Object> err = new HashMap<>();
-                    err.put("message", "Datos incompletos en el registro " + i);
-                    err.put("success", false);
-                    allDataList.add(err);
-                    continue;
-                }
-
-                String sqlInsertPlexa =
-                        "INSERT INTO andplexa (" +
-                                "plexa_cod_empre, plexa_cod_ofici, plexa_cod_cajas, plexa_cod_cliem, plexa_cod_cliof, " +
-                                "plexa_cod_clien, plexa_ide_clien, plexa_nom_clien, plexa_cod_ctaor, plexa_val_trans, " +
-                                "plexa_ide_desti, plexa_nom_desti, plexa_cod_ifina, plexa_cod_ctade, plexa_cod_tcude, " +
-                                "plexa_des_plexa, plexa_cod_oropi, plexa_val_comis, plexa_usu_carga, plexa_fec_carga, " +
-                                "plexa_usu_aprob, plexa_fec_aprob, plexa_num_plnex, plexa_num_trans, plexa_cod_ctrnomna, " +
-                                "plexa_cod_etcptec, plexa_tip_trans, plexa_tlf_desti) " +
-                                "VALUES (" +
-                                "69, :codOfici, 803, 69, :codOfici, :numSocio, :ideOrigen, :nomOrigen, :ctaOrigen, :valor, " +
-                                ":ideDest, :nomDest, :codbanco, :ctaDest, :tcuent, :desc, 1, :valComision, :usuCarga, CURRENT, " +
-                                "'', NULL, :numSecu, NULL, 1, " +
-                                ":plexaCodEtcptec, :plexaTipTrans, :plexaTlfDesti)";
-
-                Query insert = entityManager.createNativeQuery(sqlInsertPlexa);
-
-                insert.setParameter("codOfici", codOfici);
-                insert.setParameter("numSocio", numSocio);
-                insert.setParameter("ideOrigen", clienIdenti);
-                insert.setParameter("nomOrigen", nombresOrigen);
-                insert.setParameter("ctaOrigen", item.getCtaOrigen());
-                BigDecimal valor = new BigDecimal(item.getMonto().trim());
-                insert.setParameter("valor", valor);
-                insert.setParameter("ideDest", item.getIdeClien());
-                insert.setParameter("nomDest", item.getNombresDes());
-                insert.setParameter("ctaDest", item.getCtaDestino());
-                insert.setParameter("desc", descripcion);
-                BigDecimal valComis = (item.getPlexaCodEtcptec() != null && !item.getPlexaCodEtcptec().trim().isEmpty())
-                        ? totalComisionDirecta : totalComisionNormal;
-                insert.setParameter("valComision", valComis);
-                insert.setParameter("usuCarga", cliacUsuVirtu);
-                insert.setParameter("numSecu", numSecu);
-                String codBancoVal = item.getCodbanco();
-                if (item.getPlexaCodEtcptec() != null && !item.getPlexaCodEtcptec().trim().isEmpty()) {
-                    codBancoVal = null;
-                }
-                insert.setParameter("codbanco", codBancoVal);
-                insert.setParameter("tcuent", item.getTipoCuenta());
-                insert.setParameter("plexaCodEtcptec", item.getPlexaCodEtcptec());
-                insert.setParameter("plexaTipTrans", item.getPlexaTipTrans());
-                insert.setParameter("plexaTlfDesti", item.getPlexaTlfDesti());
-                insert.executeUpdate();
-                i++;
-            }
-
-            Map<String, Object> resumen = new HashMap<>();
-            resumen.put("registrosProcesados", i - 1);
-            resumen.put("message", "Nominas Externas cargadas de manera correcta");
-            allDataList.add(resumen);
-            response.put("success", true);
-            response.put("AllData", allDataList);
-
-            return new ResponseEntity<>(response, HttpStatus.OK);
-
-
+        } catch (RuntimeException re) {
+            // Re-lanzar RuntimeExceptions ya procesadas (de Fase 1 o Fase 2)
+            throw re;
         } catch (Exception e) {
-            //kguanoluisa, [Se cambio el retorno de ResponseEntity por throw RuntimeException para propagar el error y evitar UnexpectedRollbackException][][2026-05-21]
             throw new RuntimeException("Error en cargaNominaExterna: " + e.getMessage(), e);
         }
     }

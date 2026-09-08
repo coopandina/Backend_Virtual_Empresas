@@ -86,7 +86,7 @@
             <optional>true</optional>
         </dependency>
 
-        <!-- Librer??as internas -->
+        <!-- LibrerÃ­as internas -->
         <dependency>
             <groupId>ApiVirtualEmpresas</groupId>
             <artifactId>libsVirtual</artifactId>
@@ -153,7 +153,7 @@
         </dependency>
 
 
-        <!-- ================== LIBRER??AS SRI / MITyC ================== -->
+        <!-- ================== LIBRERÃAS SRI / MITyC ================== -->
         <dependency>
             <groupId>sdx.sri</groupId>
             <artifactId>srijava</artifactId>
@@ -337,8 +337,6 @@
         </plugins>
     </build>
 </project>
-
-
 
 
 

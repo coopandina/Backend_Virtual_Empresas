@@ -1299,22 +1299,32 @@ public class TransfInterService {
 
                     BigDecimal valComision = null;
                     String ctrlComision ="0";
-                    String sqlComisione = "SELECT cmcempr_comic_cmcempr, cmcempr_ctrl_cmcempr FROM andcmcempr " +
-                                                 "WHERE cmcempr_ide_clien = :idclien ";
+                    try {
+                        String sqlComisione = "SELECT cmcempr_comic_cmcempr, cmcempr_ctrl_cmcempr FROM andcmcempr " +
+                                                     "WHERE cmcempr_ide_clien = :idclien ";
 
-                            Query queryComisione = entityManager.createNativeQuery(sqlComisione);
-                            queryComisione.setParameter("idclien", clientIdentification);
-                         
-                            List<?> rsComisione = queryComisione.getResultList();
-                            if (!rsComisione.isEmpty() && rsComisione.get(0) != null) {
-                                Object[] fila = (Object[]) rsComisione.get(0);
-                                if (fila[0] != null) {
-                                    valComision = new BigDecimal(fila[0].toString().trim());
-                                }
-                                if (fila[1] != null) {
-                                    ctrlComision = fila[1].toString().trim();
-                                }
+                        Query queryComisione = entityManager.createNativeQuery(sqlComisione);
+                        queryComisione.setParameter("idclien", clientIdentification);
+                     
+                        List<?> rsComisione = queryComisione.getResultList();
+                        if (!rsComisione.isEmpty() && rsComisione.get(0) != null) {
+                            Object[] fila = (Object[]) rsComisione.get(0);
+                            BigDecimal valEspecial = null;
+                            String ctrlCom = "0";
+                            if (fila[0] != null) {
+                                valEspecial = new BigDecimal(fila[0].toString().trim());
                             }
+                            if (fila[1] != null) {
+                                ctrlCom = fila[1].toString().trim();
+                            }
+                            if ("1".equals(ctrlCom) && valEspecial != null) {
+                                valComision = valEspecial;
+                                ctrlComision = "1";
+                            }
+                        }
+                    } catch (Exception e) {
+                        System.out.println("Aviso: No se pudo consultar andcmcempr en TransfInterService, se usará comisión normal: " + e.getMessage());
+                    }
 
 
                     if (ctrlComision.equals("0")) {
@@ -1491,9 +1501,11 @@ public class TransfInterService {
 
         } catch (Exception e) {
             try {
-                transactionManager.rollback(status);
+                if (status != null && !status.isCompleted()) {
+                    transactionManager.rollback(status);
+                }
             } catch (Exception rollbackEx) {
-                // ignorar
+                System.out.println("Aviso en rollback de transferencia interbancaria: " + rollbackEx.getMessage());
             }
             response.put("message", "Error interno al ejecutar la transferencia: " + e.getMessage());
             response.put("status", "ERROR");

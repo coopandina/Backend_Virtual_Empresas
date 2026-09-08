@@ -683,12 +683,39 @@ public class DashboardService {
                 return new ResponseEntity<>(response, HttpStatus.UNAUTHORIZED);
             }
 
+            // Modificado por Brayan Pallango - SQL ampliado con caja, documento, composicion y tipo
+            // kguanoluisa, [Se agregaron campos motivo (mctad_rzn_anula) y observacion (pmdep_det_pmdep) para replicar detalle del sistema legado][2026-09-04]
             String sql = """
-                       SELECT dmcta_cod_tmovi, dmcta_val_dmcta, dmcta_fec_mctad, mv.tmovi_des_tmovi
-                              FROM cnxdmcta
-                              JOIN cnxtmovi mv ON mv.tmovi_cod_tmovi = dmcta_cod_tmovi
-                              WHERE DATE(dmcta_fec_mctad) BETWEEN :fechaInicio AND :fechaFin
-                                AND dmcta_cod_ctadp = :codCta
+                       SELECT
+                           d.dmcta_cod_tmovi        AS tipo_movi,
+                           d.dmcta_val_dmcta        AS valor,
+                           d.dmcta_fec_mctad        AS fecha,
+                           mv.tmovi_des_tmovi       AS descripcion,
+                           mv.tmovi_cod_tasie       AS tipo_operacion,
+                           d.dmcta_cod_cajas        AS caja,
+                           c.tcomd_des_tcomd        AS documento,
+                           t.ttran_abr_ttran        AS abr_ttran,
+                           m.mctad_num_ttran        AS num_ttran,
+                           m.mctad_rzn_anula        AS motivo,
+                           p.pmdep_det_pmdep        AS observacion
+                       FROM cnxdmcta d
+                       JOIN cnxtmovi mv ON mv.tmovi_cod_tmovi = d.dmcta_cod_tmovi
+                       JOIN cnxcajas cj ON cj.cajas_cod_cajas = d.dmcta_cod_cajas
+                       JOIN cnxtcomd c  ON c.tcomd_cod_tcomd  = d.dmcta_cod_tcomd
+                       LEFT JOIN cnxmctad m ON m.mctad_cod_ctadp = d.dmcta_cod_ctadp
+                                          AND m.mctad_fec_mctad  = d.dmcta_fec_mctad
+                                          AND m.mctad_cod_cajas  = d.dmcta_cod_cajas
+                       LEFT JOIN cnxttran t ON t.ttran_cod_ttran = m.mctad_cod_ttran
+                                          AND t.ttran_cod_empre = 1
+                                          AND t.ttran_cod_ofici = 1
+                       LEFT JOIN cnxpmdep p ON p.pmdep_fec_pmdep = m.mctad_fec_mctad
+                                          AND p.pmdep_cod_empre  = m.mctad_cod_empre
+                                          AND p.pmdep_cod_ofici  = m.mctad_cod_ofici
+                                          AND p.pmdep_cod_ttran  = m.mctad_cod_ttran
+                                          AND p.pmdep_num_ttran  = m.mctad_num_ttran
+                       WHERE DATE(d.dmcta_fec_mctad) BETWEEN :fechaInicio AND :fechaFin
+                         AND d.dmcta_cod_ctadp = :codCta
+                       ORDER BY d.dmcta_fec_mctad ASC
                     """;
             Query query = entityManager.createNativeQuery(sql);
             query.setParameter("codCta", codCta);
@@ -702,23 +729,117 @@ public class DashboardService {
                 return new ResponseEntity<>(response, HttpStatus.NOT_FOUND);
             }
 
-            List<Map<String, Object>> movimientos = new ArrayList<>();
+            // Modificado por Brayan Pallango - Calcular saldo anterior para que el saldo acumulado cuadre
+            String sqlSaldoAnt = """
+                    SELECT 
+                        SUM(CASE WHEN mv.tmovi_cod_tasie = 2 THEN d.dmcta_val_dmcta ELSE 0 END) - 
+                        SUM(CASE WHEN mv.tmovi_cod_tasie = 1 THEN d.dmcta_val_dmcta ELSE 0 END)
+                    FROM cnxdmcta d
+                    JOIN cnxtmovi mv ON mv.tmovi_cod_tmovi = d.dmcta_cod_tmovi
+                    WHERE d.dmcta_cod_ctadp = :codCta
+                      AND DATE(d.dmcta_fec_mctad) < :fechaInicio
+                    """;
+            Query querySaldoAnt = entityManager.createNativeQuery(sqlSaldoAnt);
+            querySaldoAnt.setParameter("codCta", codCta);
+            querySaldoAnt.setParameter("fechaInicio", fechaInicio);
+            Object saldoAntObj = querySaldoAnt.getSingleResult();
+            
+            double saldoAcumulado = 0.00;
+            if (saldoAntObj != null) {
+                try {
+                    saldoAcumulado = Double.parseDouble(saldoAntObj.toString().replace(",", "."));
+                } catch (Exception e) {}
+            }
 
-            double saldoInicial = 0.00;
+            List<Map<String, Object>> movimientos = new ArrayList<>();
 
             for (Object[] row : resultadoMovi) {
                 Map<String, Object> mov = new LinkedHashMap<>();
-                mov.put("valor", row[1] != null ? row[1] : 0);
-                mov.put("fecha", row[2] != null ? row[2].toString() : "");
-                mov.put("descripcion", row[3] != null ? row[3].toString().trim() : "");
-
+                double valor = 0.0;
                 if (row[1] != null) {
-                    saldoInicial += Double.parseDouble(row[1].toString());
+                    try {
+                        valor = Double.parseDouble(row[1].toString().replace(",", "."));
+                    } catch (Exception e) {}
                 }
+
+                // tipo_operacion: 1 = RETIRO (debito), 2 = DEPOSITO (credito)
+                int tipoOperacion = 2;
+                if (row[4] != null) {
+                    try {
+                        tipoOperacion = Double.valueOf(row[4].toString().replace(",", ".")).intValue();
+                    } catch (Exception e) {}
+                }
+
+                // Calcular saldo acumulado: depósito suma, retiro resta
+                if (tipoOperacion == 1) {
+                    saldoAcumulado -= valor;
+                } else {
+                    saldoAcumulado += valor;
+                }
+
+                // Composicion = abr_ttran - num_ttran (ej: SRIVA - 000172)
+                String abrTtran = row[7] != null ? row[7].toString().trim() : "";
+                String numTtran = "000000";
+                if (row[8] != null) {
+                    try {
+                        int valInt = Double.valueOf(row[8].toString().replace(",", ".")).intValue();
+                        numTtran = String.format("%06d", valInt);
+                    } catch (Exception e) {}
+                }
+                
+                String composicion = abrTtran.isEmpty() ? "-" : abrTtran + " - " + numTtran;
+
+                String motivoVal = row[9] != null ? row[9].toString().trim() : "";
+                String obsVal = row[10] != null ? row[10].toString().trim() : "";
+                String descVal = row[3] != null ? row[3].toString().trim() : "";
+
+                String detalleFinal = !obsVal.isEmpty() ? obsVal : (!motivoVal.isEmpty() ? motivoVal : descVal);
+
+                mov.put("fecha",       row[2] != null ? row[2].toString() : "");
+                mov.put("descripcion", descVal);
+                mov.put("tipo",        tipoOperacion == 1 ? "RETIRO" : "DEPOSITO");
+                mov.put("valor",       Math.round(valor * 100.0) / 100.0);
+                mov.put("saldo",       Math.round(saldoAcumulado * 100.0) / 100.0);
+                mov.put("caja",        row[5] != null ? row[5].toString().trim() : "-");
+                mov.put("documento",   row[6] != null ? row[6].toString().trim() : "-");
+                mov.put("composicion", composicion);
+                mov.put("motivo",      detalleFinal);
+                mov.put("observacion", detalleFinal);
+                mov.put("observaciones", detalleFinal);
+
                 movimientos.add(mov);
             }
 
-            response.put("saldoInicial", formatMoneda(saldoInicial));
+            // Modificado por Brayan Pallango - Consultar datos reales del dueño de la cuenta
+            String sqlCliente = """
+                SELECT 
+                    TRIM(c.clien_ape_clien) AS apellidos,
+                    TRIM(c.clien_nom_clien) AS nombres,
+                    TRIM(c.clien_dir_email) AS email,
+                    TRIM(c.clien_tlf_celul) AS celular,
+                    TRIM(c.clien_ide_clien) AS cedula
+                FROM cnxctadp a
+                JOIN cnxclien c ON c.clien_cod_clien = a.ctadp_cod_clien
+                WHERE a.ctadp_cod_ctadp = :codCta
+            """;
+            Query queryCliente = entityManager.createNativeQuery(sqlCliente);
+            queryCliente.setParameter("codCta", codCta);
+            List<Object[]> resCliente = queryCliente.getResultList();
+            
+            Map<String, String> clienteInfo = new HashMap<>();
+            if (!resCliente.isEmpty()) {
+                Object[] rowC = resCliente.get(0);
+                String ape = rowC[0] != null ? rowC[0].toString() : "";
+                String nom = rowC[1] != null ? rowC[1].toString() : "";
+                clienteInfo.put("nombre", (ape + " " + nom).trim());
+                clienteInfo.put("email", rowC[2] != null ? rowC[2].toString() : "");
+                clienteInfo.put("telefono", rowC[3] != null ? rowC[3].toString() : "");
+                clienteInfo.put("cedula", rowC[4] != null ? rowC[4].toString() : "");
+            }
+            
+            response.put("clienteInfo", clienteInfo);
+            
+            response.put("saldoFinal", formatMoneda(saldoAcumulado));
             response.put("movimientos", movimientos);
             response.put("status", "MOVIMIENTOK");
             return new ResponseEntity<>(response, HttpStatus.OK);
