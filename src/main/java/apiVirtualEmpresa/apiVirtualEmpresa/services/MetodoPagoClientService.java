@@ -14,7 +14,10 @@ import jakarta.persistence.Query;
 import java.util.List;
 import java.util.Base64;
 
+import org.springframework.transaction.annotation.Transactional;
+
 @Service
+@Transactional
 public class MetodoPagoClientService {
 
     private final RestTemplate restTemplate;
@@ -41,13 +44,57 @@ public class MetodoPagoClientService {
     }
 
     public String generateTxId(java.util.Date now) {
-        return generateTxId(now, "2");
+        return generateTxId(now, "2", (String) null);
     }
 
     public String generateTxId(java.util.Date now, String canal) {
-        int seq = seqCounter.getAndUpdate(s -> (s >= 9999 ? 1 : s + 1));
-        String datePart = new java.text.SimpleDateFormat("yyyyMMddHHmm").format(now);
-        return "0562" + (canal != null ? canal : "2") + datePart + String.format("%04d", seq);
+        return generateTxId(now, canal, (String) null);
+    }
+
+    public synchronized String generateTxId(java.util.Date now, String canal, String txtcaja) {
+        int nextSeq = 1;
+        try {
+            Query query = entityManager.createNativeQuery(
+                "SELECT MAX(seccaptec_cod_seccaptec) FROM andseccaptec WHERE DATE(seccaptec_fec_seccaptec) = TODAY"
+            );
+            Object result = query.getSingleResult();
+            if (result != null) {
+                if (result instanceof Number) {
+                    nextSeq = ((Number) result).intValue() + 1;
+                } else {
+                    nextSeq = Integer.parseInt(result.toString().trim()) + 1;
+                }
+            }
+        } catch (Exception e) {
+            System.out.println("No se pudo obtener el secuencial MAX de andseccaptec (usando fallback): " + e.getMessage());
+            nextSeq = seqCounter.getAndUpdate(s -> (s >= 9999 ? 1 : s + 1));
+        }
+
+        try {
+            Integer codCaja = null;
+            if (txtcaja != null && !txtcaja.trim().isEmpty()) {
+                try {
+                    codCaja = Integer.parseInt(txtcaja.trim());
+                } catch (Exception ignored) {}
+            }
+
+            String fechaHoraStr = (now != null) 
+                ? new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(now) 
+                : obtenerFechaYHora();
+
+            Query insertQuery = entityManager.createNativeQuery(
+                "INSERT INTO andseccaptec (seccaptec_cod_seccaptec, seccaptec_fec_seccaptec, seccaptec_cod_caja) VALUES (:seq, :fec, :caja)"
+            );
+            insertQuery.setParameter("seq", nextSeq);
+            insertQuery.setParameter("fec", fechaHoraStr);
+            insertQuery.setParameter("caja", codCaja);
+            insertQuery.executeUpdate();
+        } catch (Exception e) {
+            System.out.println("Error insertando registro en andseccaptec: " + e.getMessage());
+        }
+
+        String datePart = new java.text.SimpleDateFormat("yyyyMMddHHmm").format(now != null ? now : new java.util.Date());
+        return "0562" + (canal != null ? canal : "2") + datePart + String.format("%04d", nextSeq);
     }
 
     public String generateEndToEndId(java.util.Date now) {
@@ -216,7 +263,7 @@ public class MetodoPagoClientService {
             try {
                 String sqlCliente = "SELECT FIRST 1 " +
                         "clien_ide_clien, " +
-                        "TRIM(clien_nom_clien) || ' ' || TRIM(clien_ape_clien) AS nombre_completo, " +
+                        "TRIM(clien_ape_clien) || ' ' || TRIM(clien_nom_clien) AS nombre_completo, " +
                         "usvco_ema_usvco, " +
                         "usvco_tlf_usvco, " +
                         "clien_cod_empre, " +
@@ -395,7 +442,7 @@ public class MetodoPagoClientService {
 
         java.util.Date now = obtenerFechaHoraBD();
         String finalTxDate = generateTxDate(now);
-        String finalTxId = generateTxId(now, info.canal);
+        String finalTxId = generateTxId(now, info.canal, request.getTxtcaja());
         String finalEndToEndId = generateEndToEndId(now);
         request.setTxDate(finalTxDate);
         request.setTxId(finalTxId);

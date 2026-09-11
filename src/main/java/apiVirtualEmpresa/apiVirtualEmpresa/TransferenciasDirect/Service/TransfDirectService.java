@@ -410,6 +410,92 @@ public class TransfDirectService {
                     resultInsertTravir.setParameter("travir_cod_encri2", encrip2);
 
                     resultInsertTravir.executeUpdate();
+
+                    // Registrar comprobante en andcomprob
+                    try {
+                        String nomClienEnvio = "";
+                        String codClienEnvio = "";
+                        String emailEnvio = "";
+                        String tlfEnvio = "";
+                        String oficinaEnvio = "Cooperativa ANDINA Ltda.";
+                        if (response.get("informacionCtaEnvio") != null && response.get("informacionCtaEnvio") instanceof Map) {
+                            Map<?, ?> mapEnvio = (Map<?, ?>) response.get("informacionCtaEnvio");
+                            nomClienEnvio = ((mapEnvio.get("apellido") != null ? mapEnvio.get("apellido").toString().trim() + " " : "") +
+                                            (mapEnvio.get("nombre") != null ? mapEnvio.get("nombre").toString().trim() : "")).trim();
+                            codClienEnvio = mapEnvio.get("codigoCliente") != null ? mapEnvio.get("codigoCliente").toString().trim() : "";
+                            emailEnvio = mapEnvio.get("email") != null ? mapEnvio.get("email").toString().trim() : "";
+                            tlfEnvio = mapEnvio.get("telefono") != null ? mapEnvio.get("telefono").toString().trim() : "";
+                            if (mapEnvio.get("nombreOficina") != null && !mapEnvio.get("nombreOficina").toString().trim().isEmpty()) {
+                                oficinaEnvio = mapEnvio.get("nombreOficina").toString().trim();
+                            }
+                        }
+
+                        String nomClienRecibe = "";
+                        String codClienRecibe = "";
+                        String emailRecibe = "";
+                        String tlfRecibe = "";
+                        String oficinaRecibe = "Cooperativa ANDINA Ltda.";
+                        if (response.get("informacionCtaRecibe") != null && response.get("informacionCtaRecibe") instanceof Map) {
+                            Map<?, ?> mapRecibe = (Map<?, ?>) response.get("informacionCtaRecibe");
+                            nomClienRecibe = ((mapRecibe.get("apellido") != null ? mapRecibe.get("apellido").toString().trim() + " " : "") +
+                                             (mapRecibe.get("nombre") != null ? mapRecibe.get("nombre").toString().trim() : "")).trim();
+                            codClienRecibe = mapRecibe.get("codigoCliente") != null ? mapRecibe.get("codigoCliente").toString().trim() : "";
+                            emailRecibe = mapRecibe.get("email") != null ? mapRecibe.get("email").toString().trim() : "";
+                            tlfRecibe = mapRecibe.get("telefono") != null ? mapRecibe.get("telefono").toString().trim() : "";
+                            if (mapRecibe.get("nombreOficina") != null && !mapRecibe.get("nombreOficina").toString().trim().isEmpty()) {
+                                oficinaRecibe = mapRecibe.get("nombreOficina").toString().trim();
+                            }
+                        }
+
+                        String detalleConsolidado = "TRANSFERENCIA DIRECTA A " + nomClienRecibe.trim() + " EN CUENTA " + ctadpCodCtadpDestino;
+
+                        int codTtranReal = 1;
+                        try {
+                            String sqlCodT = "SELECT mctad_cod_ttran FROM cnxmctad WHERE mctad_num_ttran = :numttran ORDER BY mctad_fec_mctad DESC FIRST 1";
+                            Query qCodT = entityManager.createNativeQuery(sqlCodT);
+                            qCodT.setParameter("numttran", returnValue);
+                            List<?> resCodT = qCodT.getResultList();
+                            if (!resCodT.isEmpty() && resCodT.get(0) != null) {
+                                codTtranReal = Integer.parseInt(resCodT.get(0).toString().trim());
+                            }
+                        } catch (Exception exCodT) {}
+
+                        String sqlInsertComprob = "INSERT INTO andcomprob (" +
+                                "comprob_cod_ttran, comprob_num_ttran, comprob_nom_clien, comprob_cod_clienori, comprob_cod_ctadp, " +
+                                "comprob_des_emalori, comprob_tlf_cliori, comprob_nom_entori, " +
+                                "comprob_nom_dest, comprob_cod_cliendes, comprob_num_ctadest, comprob_ide_dest, " +
+                                "comprob_des_emaldes, comprob_tlf_clides, comprob_nom_entdes, " +
+                                "comprob_fec_trans, comprob_val_trans, comprob_val_cmsion, comprob_des_trans) " +
+                                "VALUES (:codttran, :numttran, :nomclien, :codclienori, :codctadp, " +
+                                ":emalori, :tlfori, :entori, " +
+                                ":nomdest, :codcliendes, :ctadest, '', " +
+                                ":emaldes, :tlfdes, :entdes, " +
+                                "CURRENT YEAR TO SECOND, :valtrans, 0, :destrans)";
+
+                        Query qInsert = entityManager.createNativeQuery(sqlInsertComprob);
+                        qInsert.setParameter("codttran", codTtranReal);
+                        qInsert.setParameter("numttran", returnValue);
+                        qInsert.setParameter("nomclien", nomClienEnvio);
+                        qInsert.setParameter("codclienori", codClienEnvio);
+                        qInsert.setParameter("codctadp", ctadpCodCtadpEnvio);
+                        qInsert.setParameter("emalori", emailEnvio);
+                        qInsert.setParameter("tlfori", tlfEnvio);
+                        qInsert.setParameter("entori", oficinaEnvio);
+
+                        qInsert.setParameter("nomdest", nomClienRecibe);
+                        qInsert.setParameter("codcliendes", codClienRecibe);
+                        qInsert.setParameter("ctadest", ctadpCodCtadpDestino);
+                        qInsert.setParameter("emaldes", emailRecibe);
+                        qInsert.setParameter("tlfdes", tlfRecibe);
+                        qInsert.setParameter("entdes", oficinaRecibe);
+
+                        qInsert.setParameter("valtrans", valTransferencia);
+                        qInsert.setParameter("destrans", detalleConsolidado);
+                        qInsert.executeUpdate();
+                        System.out.println("DEBUG DIRECTAS: Comprobante registrado en andcomprob con numttran = [" + returnValue + "]");
+                    } catch (Exception exComprob) {
+                        System.out.println("Aviso al registrar en andcomprob: " + exComprob.getMessage());
+                    }
                     String sqlUpdatesToken =
                             "UPDATE vircodaccess " +
                                     "SET codaccess_estado = :estado_up " +
@@ -525,6 +611,91 @@ public class TransfDirectService {
                     resultInsertTravir.setParameter("travir_cod_encri2", encrip2);
 
                     resultInsertTravir.executeUpdate();
+
+                    // Registrar comprobante en andcomprob (diferente oficina)
+                    try {
+                        String nomClienEnvio2 = "";
+                        String codClienEnvio2 = "";
+                        String emailEnvio2 = "";
+                        String tlfEnvio2 = "";
+                        String oficinaEnvio2 = "Cooperativa ANDINA Ltda.";
+                        if (response.get("informacionCtaEnvio") != null && response.get("informacionCtaEnvio") instanceof Map) {
+                            Map<?, ?> mapEnvio2 = (Map<?, ?>) response.get("informacionCtaEnvio");
+                            nomClienEnvio2 = ((mapEnvio2.get("apellido") != null ? mapEnvio2.get("apellido").toString().trim() + " " : "") +
+                                             (mapEnvio2.get("nombre") != null ? mapEnvio2.get("nombre").toString().trim() : "")).trim();
+                            codClienEnvio2 = mapEnvio2.get("codigoCliente") != null ? mapEnvio2.get("codigoCliente").toString().trim() : "";
+                            emailEnvio2 = mapEnvio2.get("email") != null ? mapEnvio2.get("email").toString().trim() : "";
+                            tlfEnvio2 = mapEnvio2.get("telefono") != null ? mapEnvio2.get("telefono").toString().trim() : "";
+                            if (mapEnvio2.get("nombreOficina") != null && !mapEnvio2.get("nombreOficina").toString().trim().isEmpty()) {
+                                oficinaEnvio2 = mapEnvio2.get("nombreOficina").toString().trim();
+                            }
+                        }
+
+                        String nomClienRecibe2 = "";
+                        String codClienRecibe2 = "";
+                        String emailRecibe2 = "";
+                        String tlfRecibe2 = "";
+                        String oficinaRecibe2 = "Cooperativa ANDINA Ltda.";
+                        if (response.get("informacionCtaRecibe") != null && response.get("informacionCtaRecibe") instanceof Map) {
+                            Map<?, ?> mapRecibe2 = (Map<?, ?>) response.get("informacionCtaRecibe");
+                            nomClienRecibe2 = ((mapRecibe2.get("apellido") != null ? mapRecibe2.get("apellido").toString().trim() + " " : "") +
+                                              (mapRecibe2.get("nombre") != null ? mapRecibe2.get("nombre").toString().trim() : "")).trim();
+                            codClienRecibe2 = mapRecibe2.get("codigoCliente") != null ? mapRecibe2.get("codigoCliente").toString().trim() : "";
+                            emailRecibe2 = mapRecibe2.get("email") != null ? mapRecibe2.get("email").toString().trim() : "";
+                            tlfRecibe2 = mapRecibe2.get("telefono") != null ? mapRecibe2.get("telefono").toString().trim() : "";
+                            if (mapRecibe2.get("nombreOficina") != null && !mapRecibe2.get("nombreOficina").toString().trim().isEmpty()) {
+                                oficinaRecibe2 = mapRecibe2.get("nombreOficina").toString().trim();
+                            }
+                        }
+
+                        String detalleConsolidado2 = "TRANSFERENCIA DIRECTA A " + nomClienRecibe2.trim() + " EN CUENTA " + ctadpCodCtadpDestino;
+                        int codTtranReal2 = 1;
+                        try {
+                            String sqlCodT2 = "SELECT mctad_cod_ttran FROM cnxmctad WHERE mctad_num_ttran = :numttran ORDER BY mctad_fec_mctad DESC FIRST 1";
+                            Query qCodT2 = entityManager.createNativeQuery(sqlCodT2);
+                            qCodT2.setParameter("numttran", returnValue);
+                            List<?> resCodT2 = qCodT2.getResultList();
+                            if (!resCodT2.isEmpty() && resCodT2.get(0) != null) {
+                                codTtranReal2 = Integer.parseInt(resCodT2.get(0).toString().trim());
+                            }
+                        } catch (Exception exCodT2) {}
+
+                        String sqlInsertComprob2 = "INSERT INTO andcomprob (" +
+                                "comprob_cod_ttran, comprob_num_ttran, comprob_nom_clien, comprob_cod_clienori, comprob_cod_ctadp, " +
+                                "comprob_des_emalori, comprob_tlf_cliori, comprob_nom_entori, " +
+                                "comprob_nom_dest, comprob_cod_cliendes, comprob_num_ctadest, comprob_ide_dest, " +
+                                "comprob_des_emaldes, comprob_tlf_clides, comprob_nom_entdes, " +
+                                "comprob_fec_trans, comprob_val_trans, comprob_val_cmsion, comprob_des_trans) " +
+                                "VALUES (:codttran, :numttran, :nomclien, :codclienori, :codctadp, " +
+                                ":emalori, :tlfori, :entori, " +
+                                ":nomdest, :codcliendes, :ctadest, '', " +
+                                ":emaldes, :tlfdes, :entdes, " +
+                                "CURRENT YEAR TO SECOND, :valtrans, 0, :destrans)";
+                        Query qInsert2 = entityManager.createNativeQuery(sqlInsertComprob2);
+                        qInsert2.setParameter("codttran", codTtranReal2);
+                        qInsert2.setParameter("numttran", returnValue);
+                        qInsert2.setParameter("nomclien", nomClienEnvio2);
+                        qInsert2.setParameter("codclienori", codClienEnvio2);
+                        qInsert2.setParameter("codctadp", ctadpCodCtadpEnvio);
+                        qInsert2.setParameter("emalori", emailEnvio2);
+                        qInsert2.setParameter("tlfori", tlfEnvio2);
+                        qInsert2.setParameter("entori", oficinaEnvio2);
+
+                        qInsert2.setParameter("nomdest", nomClienRecibe2);
+                        qInsert2.setParameter("codcliendes", codClienRecibe2);
+                        qInsert2.setParameter("ctadest", ctadpCodCtadpDestino);
+                        qInsert2.setParameter("emaldes", emailRecibe2);
+                        qInsert2.setParameter("tlfdes", tlfRecibe2);
+                        qInsert2.setParameter("entdes", oficinaRecibe2);
+
+                        qInsert2.setParameter("valtrans", valTransferencia);
+                        qInsert2.setParameter("destrans", detalleConsolidado2);
+                        qInsert2.executeUpdate();
+                        System.out.println("DEBUG DIRECTAS: Comprobante registrado en andcomprob (dif.oficina) con numttran = [" + returnValue + "]");
+                    } catch (Exception exComprob2) {
+                        System.out.println("Aviso al registrar en andcomprob (dif.oficina): " + exComprob2.getMessage());
+                    }
+
                     String sqlUpdatesToken =
                             "UPDATE vircodaccess " +
                                     "SET codaccess_estado = :estado_up " +

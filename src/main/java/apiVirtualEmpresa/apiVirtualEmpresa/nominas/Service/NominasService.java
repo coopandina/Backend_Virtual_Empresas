@@ -3,6 +3,7 @@ package apiVirtualEmpresa.apiVirtualEmpresa.nominas.Service;
 import apiVirtualEmpresa.apiVirtualEmpresa.config.JwtUtil;
 import apiVirtualEmpresa.apiVirtualEmpresa.config.Obtenertoken;
 import apiVirtualEmpresa.apiVirtualEmpresa.login.service.TokenExpirationService;
+import apiVirtualEmpresa.apiVirtualEmpresa.nominas.dto.NominasEmailRequestDTO;
 import apiVirtualEmpresa.apiVirtualEmpresa.nominas.dto.NominasUtils;
 import apiVirtualEmpresas.virtualempresas.libs.Libs;
 import envioCorreo.sendEmail;
@@ -49,6 +50,9 @@ public class NominasService {
 
     @Autowired
     private apiVirtualEmpresa.apiVirtualEmpresa.services.MetodoPagoClientService metodoPagoClientService;
+
+    @Autowired
+    private EnvioCorreoNomina envioCorreoNomina;
 
     int intentosRealizadoTokenFallos = 0;
     int intentosRealizadoTokenFallosInterban = 0;
@@ -1124,15 +1128,17 @@ public class NominasService {
                 }
 
 
+                String desTrans = item.getDesTrans() != null ? item.getDesTrans() : "";
+
                 String sqlInsertPlina =
                         "INSERT INTO andplina (" +
                                 "plina_cod_empre, plina_cod_ofici, plina_cod_cajas, plina_des_plina, " +
                                 "plina_cod_ctaor, plina_cod_ctade, plina_val_trans, plina_usu_carga, " +
                                 "plina_fec_carga, plina_usu_aprob, plina_fec_aprob, plina_num_plina, " +
-                                "plina_num_trans, plina_ctr_trans, " + "plina_ide_clien) " +
+                                "plina_num_trans, plina_ctr_trans, plina_ide_clien, plina_des_trans) " +
                                 "VALUES (:plina_cod_empre, :plina_cod_ofici, :plina_cod_cajas, :plina_des_plina, " +
                                 ":plina_cod_ctaor, :plina_cod_ctade, :plina_val_trans, :plina_usu_carga, " +
-                                "CURRENT, NULL, NULL, :plina_num_plina, NULL, :plina_ctr_trans , :ide_cliente)";
+                                "CURRENT, NULL, NULL, :plina_num_plina, NULL, :plina_ctr_trans, :ide_cliente, :plina_des_trans)";
 
                 Query insertPlina = entityManager.createNativeQuery(sqlInsertPlina);
 
@@ -1149,6 +1155,7 @@ public class NominasService {
                 insertPlina.setParameter("plina_usu_carga", cliacUsuVirtu);
                 insertPlina.setParameter("plina_num_plina", numSecu);
                 insertPlina.setParameter("plina_ctr_trans", 1);
+                insertPlina.setParameter("plina_des_trans", desTrans);
 
                 int rowInsert = insertPlina.executeUpdate();
 
@@ -1440,11 +1447,31 @@ public class NominasService {
                 }
 
 
+                String desTransInt = dto.getDesTrans() != null ? dto.getDesTrans().trim() : "";
+                if (desTransInt.isEmpty() && codreg != null && !codreg.isEmpty()) {
+                    try {
+                        String sqlDesInt = "SELECT plina_des_trans FROM andplina WHERE plina_cod_plina = :codreg";
+                        Query qDesInt = entityManager.createNativeQuery(sqlDesInt);
+                        qDesInt.setParameter("codreg", Integer.parseInt(codreg));
+                        List<?> rsDesInt = qDesInt.getResultList();
+                        if (!rsDesInt.isEmpty() && rsDesInt.get(0) != null) {
+                            desTransInt = rsDesInt.get(0).toString().trim();
+                        }
+                    } catch (Exception eDes) {
+                        System.out.println("Error recuperando plina_des_trans: " + eDes.getMessage());
+                    }
+                }
+
+                String descNomina = "Acreditacion de nomina";
+                if (!desTransInt.isEmpty()) {
+                    descNomina = descNomina + ", " + desTransInt;
+                }
+
 // ➤ EJECUCIÓN ÚNICA DEL SP
                 Query qp = entityManager.createNativeQuery(callTransferProcedure);
                 qp.setParameter("empre", codEmp);
                 qp.setParameter("ofici", ofiOrigen);
-                qp.setParameter("desc", "Acreditacion de nomina");
+                qp.setParameter("desc", descNomina);
                 qp.setParameter("cta_ori", ctaOri);
                 qp.setParameter("cta_des", numeroCtaDestino);
                 qp.setParameter("valor", valTransferencia);
@@ -1509,6 +1536,164 @@ public class NominasService {
                     response.put("status", "AA029");
 
                     return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+                }
+
+                if (numTrans != null && !desTransInt.isEmpty()) {
+                    try {
+                        String sqlUpdatePmdep = "UPDATE cnxpmdep SET pmdep_det_pmdep = TRIM(pmdep_det_pmdep) || ', ' || :desTrans " +
+                                                "WHERE pmdep_num_ttran = :numTrans " +
+                                                "AND pmdep_det_pmdep NOT LIKE '%' || :desTrans || '%'";
+                        Query qUpdatePmdep = entityManager.createNativeQuery(sqlUpdatePmdep);
+                        qUpdatePmdep.setParameter("desTrans", desTransInt);
+                        qUpdatePmdep.setParameter("numTrans", numTrans);
+                        qUpdatePmdep.executeUpdate();
+
+                        String sqlUpdateMctad = "UPDATE cnxmctad SET mctad_rzn_anula = TRIM(mctad_rzn_anula) || ', ' || :desTrans " +
+                                                "WHERE mctad_num_ttran = :numTrans " +
+                                                "AND mctad_rzn_anula NOT LIKE '%' || :desTrans || '%'";
+                        Query qUpdateMctad = entityManager.createNativeQuery(sqlUpdateMctad);
+                        qUpdateMctad.setParameter("desTrans", desTransInt);
+                        qUpdateMctad.setParameter("numTrans", numTrans);
+                        qUpdateMctad.executeUpdate();
+                    } catch (Exception exPmdep) {
+                        System.out.println("Error actualizando cnxpmdep/cnxmctad para nomina interna: " + exPmdep.getMessage());
+                    }
+                }
+
+                // Registrar comprobante en andcomprob (nómina interna)
+                try {
+                    String nomClienOri = "";
+                    String codClienOri = "";
+                    String emailOri = "";
+                    String tlfOri = "";
+                    String oficiOri = "Cooperativa ANDINA Ltda.";
+
+                    String nomClienDes = "";
+                    String codClienDes = "";
+                    String ideDes = "";
+                    String emailDes = "";
+                    String tlfDes = "";
+                    String oficiDes = "Cooperativa ANDINA Ltda.";
+
+                    try {
+                        String sqlInfoEnvio = "SELECT ofici_nom_ofici, clien_dir_email, clien_ape_clien, clien_nom_clien, clien_tlf_celul, clien_cod_clien " +
+                                "FROM cnxctadp, cnxclien, cnxofici " +
+                                "WHERE ctadp_cod_ctadp = :cta " +
+                                "AND ctadp_cod_depos IN (1,2,9) " +
+                                "AND ctadp_cod_ectad = '1' " +
+                                "AND clien_cod_ofici = ofici_cod_ofici " +
+                                "AND ctadp_cod_clien = clien_cod_clien";
+                        Query qInfoEnvio = entityManager.createNativeQuery(sqlInfoEnvio);
+                        qInfoEnvio.setParameter("cta", numeroCuentaEnvio);
+                        List<?> rsOri = qInfoEnvio.getResultList();
+                        if (!rsOri.isEmpty() && rsOri.get(0) != null) {
+                            Object[] rowO = (Object[]) rsOri.get(0);
+                            if (rowO[0] != null) oficiOri = rowO[0].toString().trim();
+                            if (rowO[1] != null) emailOri = rowO[1].toString().trim();
+                            String ap = rowO[2] != null ? rowO[2].toString().trim() : "";
+                            String nm = rowO[3] != null ? rowO[3].toString().trim() : "";
+                            nomClienOri = (ap + " " + nm).trim();
+                            if (rowO[4] != null) tlfOri = rowO[4].toString().trim();
+                            if (rowO[5] != null) codClienOri = rowO[5].toString().trim();
+                        }
+                    } catch (Exception e2) {}
+
+                    try {
+                        String sqlInfoRecibe = "SELECT ofici_nom_ofici, clien_dir_email, clien_ape_clien, clien_nom_clien, clien_tlf_celul, clien_cod_clien, clien_ide_clien " +
+                                "FROM cnxctadp, cnxclien, cnxofici " +
+                                "WHERE ctadp_cod_ctadp = :cta " +
+                                "AND ctadp_cod_depos IN (1,2,9) " +
+                                "AND ctadp_cod_ectad = '1' " +
+                                "AND clien_cod_ofici = ofici_cod_ofici " +
+                                "AND ctadp_cod_clien = clien_cod_clien";
+                        Query qInfoRecibe = entityManager.createNativeQuery(sqlInfoRecibe);
+                        qInfoRecibe.setParameter("cta", numeroCtaDestino);
+                        List<?> rsDes = qInfoRecibe.getResultList();
+                        if (!rsDes.isEmpty() && rsDes.get(0) != null) {
+                            Object[] rowD = (Object[]) rsDes.get(0);
+                            if (rowD[0] != null) oficiDes = rowD[0].toString().trim();
+                            if (rowD[1] != null) emailDes = rowD[1].toString().trim();
+                            String ap = rowD[2] != null ? rowD[2].toString().trim() : "";
+                            String nm = rowD[3] != null ? rowD[3].toString().trim() : "";
+                            nomClienDes = (ap + " " + nm).trim();
+                            if (rowD[4] != null) tlfDes = rowD[4].toString().trim();
+                            if (rowD[5] != null) codClienDes = rowD[5].toString().trim();
+                            if (rowD[6] != null) ideDes = rowD[6].toString().trim();
+                        }
+                    } catch (Exception e3) {}
+
+                    // Intentar recuperar email y teléfono de andusvco si no están en cnxclien
+                    try {
+                        if (emailOri.isEmpty() || tlfOri.isEmpty()) {
+                            String sqlUsv = "SELECT usvco_ema_usvco, usvco_tlf_usvco FROM andusvco, cnxctadp WHERE ctadp_cod_ctadp = :cta AND ctadp_cod_clien = usvco_cod_clien AND usvco_tip_usvco = '1'";
+                            Query qUsv = entityManager.createNativeQuery(sqlUsv);
+                            qUsv.setParameter("cta", numeroCuentaEnvio);
+                            List<?> rsUsv = qUsv.getResultList();
+                            if (!rsUsv.isEmpty() && rsUsv.get(0) != null) {
+                                Object[] rU = (Object[]) rsUsv.get(0);
+                                if (emailOri.isEmpty() && rU[0] != null) emailOri = rU[0].toString().trim();
+                                if (tlfOri.isEmpty() && rU[1] != null) tlfOri = rU[1].toString().trim();
+                            }
+                        }
+                    } catch (Exception exU) {}
+
+                    try {
+                        if (emailDes.isEmpty() || tlfDes.isEmpty()) {
+                            String sqlUsvD = "SELECT usvco_ema_usvco, usvco_tlf_usvco FROM andusvco, cnxctadp WHERE ctadp_cod_ctadp = :cta AND ctadp_cod_clien = usvco_cod_clien AND usvco_tip_usvco = '1'";
+                            Query qUsvD = entityManager.createNativeQuery(sqlUsvD);
+                            qUsvD.setParameter("cta", numeroCtaDestino);
+                            List<?> rsUsvD = qUsvD.getResultList();
+                            if (!rsUsvD.isEmpty() && rsUsvD.get(0) != null) {
+                                Object[] rUD = (Object[]) rsUsvD.get(0);
+                                if (emailDes.isEmpty() && rUD[0] != null) emailDes = rUD[0].toString().trim();
+                                if (tlfDes.isEmpty() && rUD[1] != null) tlfDes = rUD[1].toString().trim();
+                            }
+                        }
+                    } catch (Exception exUD) {}
+
+                    String detalleNomInt = "ACREDITACION NOMINA INTERNA A " + nomClienDes + " EN CUENTA " + numeroCtaDestino;
+                    int codTtranRealNomInt = 1;
+                    try {
+                        String sqlCodT = "SELECT mctad_cod_ttran FROM cnxmctad WHERE mctad_num_ttran = :numttran ORDER BY mctad_fec_mctad DESC FIRST 1";
+                        Query qCodT = entityManager.createNativeQuery(sqlCodT);
+                        qCodT.setParameter("numttran", numTrans != null ? numTrans : 0);
+                        List<?> resCodT = qCodT.getResultList();
+                        if (!resCodT.isEmpty() && resCodT.get(0) != null) {
+                            codTtranRealNomInt = Integer.parseInt(resCodT.get(0).toString().trim());
+                        }
+                    } catch (Exception exCodT) {}
+
+                    String sqlInsertComprobNomInt = "INSERT INTO andcomprob (" +
+                            "comprob_cod_ttran, comprob_num_ttran, comprob_nom_clien, comprob_cod_clienori, comprob_cod_ctadp, " +
+                            "comprob_des_emalori, comprob_tlf_cliori, comprob_nom_entori, comprob_nom_dest, comprob_cod_cliendes, " +
+                            "comprob_num_ctadest, comprob_ide_dest, comprob_des_emaldes, comprob_tlf_clides, comprob_nom_entdes, " +
+                            "comprob_fec_trans, comprob_val_trans, comprob_val_cmsion, comprob_des_trans) " +
+                            "VALUES (:codttran, :numttran, :nomclien, :codclienori, :codctadp, " +
+                            ":emalori, :tlfori, :entori, :nomdest, :codcliendes, " +
+                            ":ctadest, :idedest, :emaldes, :tlfdes, :entdes, " +
+                            "CURRENT YEAR TO SECOND, :valtrans, 0, :destrans)";
+                    Query qInsertNomInt = entityManager.createNativeQuery(sqlInsertComprobNomInt);
+                    qInsertNomInt.setParameter("codttran", codTtranRealNomInt);
+                    qInsertNomInt.setParameter("numttran", numTrans != null ? numTrans : 0);
+                    qInsertNomInt.setParameter("nomclien", nomClienOri);
+                    qInsertNomInt.setParameter("codclienori", codClienOri);
+                    qInsertNomInt.setParameter("codctadp", numeroCuentaEnvio);
+                    qInsertNomInt.setParameter("emalori", emailOri);
+                    qInsertNomInt.setParameter("tlfori", tlfOri);
+                    qInsertNomInt.setParameter("entori", oficiOri);
+                    qInsertNomInt.setParameter("nomdest", nomClienDes);
+                    qInsertNomInt.setParameter("codcliendes", codClienDes);
+                    qInsertNomInt.setParameter("ctadest", numeroCtaDestino);
+                    qInsertNomInt.setParameter("idedest", ideDes);
+                    qInsertNomInt.setParameter("emaldes", emailDes);
+                    qInsertNomInt.setParameter("tlfdes", tlfDes);
+                    qInsertNomInt.setParameter("entdes", oficiDes);
+                    qInsertNomInt.setParameter("valtrans", valTransferencia);
+                    qInsertNomInt.setParameter("destrans", detalleNomInt);
+                    qInsertNomInt.executeUpdate();
+                    System.out.println("DEBUG NOM-INT: Comprobante registrado en andcomprob numttran=[" + numTrans + "] cta=[" + numeroCuentaEnvio + "]");
+                } catch (Exception exNomInt) {
+                    System.out.println("Aviso al registrar en andcomprob (nomina interna): " + exNomInt.getMessage());
                 }
 
 
@@ -1894,6 +2079,8 @@ public class NominasService {
                         continue;
                     }
 
+                    String desTrans = item.getDesTrans() != null ? item.getDesTrans() : "";
+
                     String sqlInsertPlexa =
                             "INSERT INTO andplexa (" +
                                     "plexa_cod_empre, plexa_cod_ofici, plexa_cod_cajas, plexa_cod_cliem, plexa_cod_cliof, " +
@@ -1901,12 +2088,12 @@ public class NominasService {
                                     "plexa_ide_desti, plexa_nom_desti, plexa_cod_ifina, plexa_cod_ctade, plexa_cod_tcude, " +
                                     "plexa_des_plexa, plexa_cod_oropi, plexa_val_comis, plexa_usu_carga, plexa_fec_carga, " +
                                     "plexa_usu_aprob, plexa_fec_aprob, plexa_num_plnex, plexa_num_trans, plexa_cod_ctrnomna, " +
-                                    "plexa_cod_etcptec, plexa_tip_trans, plexa_tlf_desti) " +
+                                    "plexa_cod_etcptec, plexa_tip_trans, plexa_tlf_desti, plexa_des_trans) " +
                                     "VALUES (" +
                                     "69, :codOfici, 803, 69, :codOfici, :numSocio, :ideOrigen, :nomOrigen, :ctaOrigen, :valor, " +
                                     ":ideDest, :nomDest, :codbanco, :ctaDest, :tcuent, :desc, 1, :valComision, :usuCarga, CURRENT, " +
                                     "'', NULL, :numSecu, NULL, 1, " +
-                                    ":plexaCodEtcptec, :plexaTipTrans, :plexaTlfDesti)";
+                                    ":plexaCodEtcptec, :plexaTipTrans, :plexaTlfDesti, :plexa_des_trans)";
 
                     Query insert = entityManager.createNativeQuery(sqlInsertPlexa);
 
@@ -1935,6 +2122,7 @@ public class NominasService {
                     insert.setParameter("plexaCodEtcptec", item.getPlexaCodEtcptec());
                     insert.setParameter("plexaTipTrans", item.getPlexaTipTrans());
                     insert.setParameter("plexaTlfDesti", item.getPlexaTlfDesti());
+                    insert.setParameter("plexa_des_trans", desTrans);
                     insert.executeUpdate();
                     i++;
                 }
@@ -2160,6 +2348,21 @@ public class NominasService {
                 String descripcionTrf = dto.getDescripcion();
                 BigDecimal valTransferencia = dto.getValTransfer();
 
+                String desTransExt = dto.getDesTrans() != null ? dto.getDesTrans().trim() : "";
+                if (desTransExt.isEmpty() && dto.getCodreg() != null && !dto.getCodreg().isEmpty()) {
+                    try {
+                        String sqlDesExt = "SELECT plexa_des_trans FROM andplexa WHERE plexa_cod_plexa = :codreg";
+                        Query qDesExt = entityManager.createNativeQuery(sqlDesExt);
+                        qDesExt.setParameter("codreg", Integer.parseInt(dto.getCodreg()));
+                        List<?> rsDesExt = qDesExt.getResultList();
+                        if (!rsDesExt.isEmpty() && rsDesExt.get(0) != null) {
+                            desTransExt = rsDesExt.get(0).toString().trim();
+                        }
+                    } catch (Exception eDes) {
+                        System.out.println("Error recuperando plexa_des_trans: " + eDes.getMessage());
+                    }
+                }
+
                 // Obtener informacion para destino interbancario
                 String clieIdBancoRecibe = dto.getCodbanco().trim();
                 String titulaCtaRecibe = dto.getNombresBenef().trim();
@@ -2376,8 +2579,6 @@ public class NominasService {
                         System.out.println("Error al recuperar email/phone/deposito del ordenante: " + e.getMessage());
                     }
 
-
-
                     // 6. Moneda
                     String isoCurrency = "USD";
                     try {
@@ -2465,17 +2666,19 @@ public class NominasService {
                             .aba(destAba)
                             .build();
 
-                    String truncatedDesc = descripcionTrf != null ? (descripcionTrf.length() > 16 ? descripcionTrf.substring(0, 16).trim() : descripcionTrf) : "";
+                    String customDesc = !desTransExt.isEmpty() ? desTransExt : (descripcionTrf != null ? descripcionTrf : "");
+                    String truncatedDesc = customDesc.length() > 16 ? customDesc.substring(0, 16).trim() : customDesc;
+                    if (truncatedDesc.length() < 2) {
+                        truncatedDesc = "NOMINA";
+                    }
                     java.util.Date now = metodoPagoClientService.obtenerFechaHoraBD();
                     String finalTxDate = metodoPagoClientService.generateTxDate(now);
-                    String finalTxId = metodoPagoClientService.generateTxId(now);
 
                     apiVirtualEmpresa.apiVirtualEmpresa.dto.captec.BankTransferRequest gatewayDto = apiVirtualEmpresa.apiVirtualEmpresa.dto.captec.BankTransferRequest.builder()
                             .entityId(entityIdVal)
                             .originNetwork(originNetworkVal)
                             .terminalId(terminalIdVal)
                             .txDate(finalTxDate)
-                            .txId(finalTxId)
                             .systemid(systemIdStr)
                             .txtcaja("803")
                             .sourceAccount(sourceAccount)
@@ -2513,6 +2716,9 @@ public class NominasService {
                 try {
                     if ("1".equals(dto.getPlexaTipTrans())) {
                         // Registrar contable CAPTEC
+                        // [kguanoluisa] - Se comenta la llamada a grabar2 / andsp_reg_nddct_iva ya que en nóminas directas
+                        // la pasarela Captec / Core debita la comisión total con IVA incluido, evitando el cobro duplicado de $0.05. - 09/09/2026
+                        /*
                         ResponseEntity<Map<String, Object>> grabar2Response = grabar2(clieCodEmpresaEnvio, clienCodOficiEnvio, clinIdenEnvio,
                                 "0", "803", valComisionCaptec.doubleValue(), 1, nomApellido, "0", "0", numeroCuentaEnvio,
                                 15, "125");
@@ -2522,6 +2728,7 @@ public class NominasService {
                             marcarComoNoProcesada(dto.getCodreg(), cedulaCtaRecibe, cliacUsuVirtu, clienIdenti, "Error al registrar contabilidad CAPTEC.", defCaptec);
                             return grabar2Response;
                         }
+                        */
 
                         try {
                             if (gatewayResponse.getResult() != null && gatewayResponse.getResult().getNumttran() != null) {
@@ -2534,6 +2741,8 @@ public class NominasService {
                     } else {
                         // ====== FLUJO TRANSFERENCIA SPI NORMAL ======
                         // LLAMADA SP SPI
+                        String descSpi = "TRANSFERENCIAS INTERBANCARIAS EN LINEA" + (!desTransExt.isEmpty() ? ", " + desTransExt : "");
+
                         String callTransferProcedure =
                                 "CALL cnxprc_reg_spi01_wb(" +
                                         ":clienCodEmpreEnvio," +
@@ -2550,7 +2759,7 @@ public class NominasService {
                                         ":clieIdBancoRecibe," +
                                         ":numeroCtaDestino," +
                                         ":tipoctabce," +
-                                        "'TRANSFERENCIAS INTERBANCARIAS EN LINEA'," +
+                                        ":descSpi," +
                                         "1,:valComisionProc)";
 
                         Query queryProcedure = entityManager.createNativeQuery(callTransferProcedure);
@@ -2566,6 +2775,7 @@ public class NominasService {
                         queryProcedure.setParameter("clieIdBancoRecibe", clieIdBancoRecibe);
                         queryProcedure.setParameter("numeroCtaDestino", numeroCtaDestino);
                         queryProcedure.setParameter("tipoctabce", tipoctabce);
+                        queryProcedure.setParameter("descSpi", descSpi);
                         queryProcedure.setParameter("valComisionProc", totalComision.toString());
 
                         Object result = queryProcedure.getSingleResult();
@@ -2583,6 +2793,28 @@ public class NominasService {
                             transactionManager.rollback(status);
                             marcarComoNoProcesada(dto.getCodreg(), cedulaCtaRecibe, cliacUsuVirtu, clienIdenti, "Error al registrar contabilidad SPI.", defCaptec);
                             return grabar2Response;
+                        }
+                    }
+
+                    if (numTrans != null && !desTransExt.isEmpty()) {
+                        try {
+                            String sqlUpdatePmdepExt = "UPDATE cnxpmdep SET pmdep_det_pmdep = TRIM(pmdep_det_pmdep) || ', ' || :desTrans " +
+                                                    "WHERE pmdep_num_ttran = :numTrans " +
+                                                    "AND pmdep_det_pmdep NOT LIKE '%' || :desTrans || '%'";
+                            Query qUpdatePmdepExt = entityManager.createNativeQuery(sqlUpdatePmdepExt);
+                            qUpdatePmdepExt.setParameter("desTrans", desTransExt);
+                            qUpdatePmdepExt.setParameter("numTrans", numTrans);
+                            qUpdatePmdepExt.executeUpdate();
+
+                            String sqlUpdateMctadExt = "UPDATE cnxmctad SET mctad_rzn_anula = TRIM(mctad_rzn_anula) || ', ' || :desTrans " +
+                                                    "WHERE mctad_num_ttran = :numTrans " +
+                                                    "AND mctad_rzn_anula NOT LIKE '%' || :desTrans || '%'";
+                            Query qUpdateMctadExt = entityManager.createNativeQuery(sqlUpdateMctadExt);
+                            qUpdateMctadExt.setParameter("desTrans", desTransExt);
+                            qUpdateMctadExt.setParameter("numTrans", numTrans);
+                            qUpdateMctadExt.executeUpdate();
+                        } catch (Exception exPmdep) {
+                            System.out.println("Error actualizando cnxpmdep/cnxmctad para nomina externa: " + exPmdep.getMessage());
                         }
                     }
 
@@ -2617,6 +2849,55 @@ public class NominasService {
                         response.put("message", "No se pudo actualizar el estado de la transferencia.");
                         response.put("status", "AA022");
                         return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+                    }
+
+                    // Registrar comprobante en andcomprob (nómina externa SPI/CAPTEC)
+                    try {
+                        String bancoDest2 = "Entidad Financiera";
+                        try {
+                            String sqlBanco2 = "SELECT ifspi_nom_ifspi FROM cnxifspi WHERE ifspi_cod_ifspi = :codBanco";
+                            Query qBanco2 = entityManager.createNativeQuery(sqlBanco2);
+                            qBanco2.setParameter("codBanco", clieIdBancoRecibe);
+                            List<?> rsBanco2 = qBanco2.getResultList();
+                            if (!rsBanco2.isEmpty() && rsBanco2.get(0) != null) bancoDest2 = rsBanco2.get(0).toString().trim();
+                        } catch (Exception exB2) {}
+                        String detalleNomExt = "ACREDITACION NOMINA EXT. A " + titulaCtaRecibe + " EN CUENTA " + numeroCtaDestino;
+                        int codTtranRealNomExt = 91;
+                        try {
+                            String sqlCodT = "SELECT mctad_cod_ttran FROM cnxmctad WHERE mctad_num_ttran = :numttran ORDER BY mctad_fec_mctad DESC FIRST 1";
+                            Query qCodT = entityManager.createNativeQuery(sqlCodT);
+                            qCodT.setParameter("numttran", numTrans != null ? numTrans : 0);
+                            List<?> resCodT = qCodT.getResultList();
+                            if (!resCodT.isEmpty() && resCodT.get(0) != null) {
+                                codTtranRealNomExt = Integer.parseInt(resCodT.get(0).toString().trim());
+                            }
+                        } catch (Exception exCodT) {}
+
+                        String sqlInsertComprobNomExt = "INSERT INTO andcomprob (" +
+                                "comprob_cod_ttran, comprob_num_ttran, comprob_nom_clien, comprob_cod_clienori, comprob_cod_ctadp, " +
+                                "comprob_des_emalori, comprob_tlf_cliori, comprob_nom_entori, comprob_nom_dest, comprob_cod_cliendes, " +
+                                "comprob_num_ctadest, comprob_ide_dest, comprob_des_emaldes, comprob_tlf_clides, comprob_nom_entdes, " +
+                                "comprob_fec_trans, comprob_val_trans, comprob_val_cmsion, comprob_des_trans) " +
+                                "VALUES (:codttran, :numttran, :nomclien, '', :codctadp, " +
+                                "'', '', 'Cooperativa ANDINA Ltda.', :nomdest, '', " +
+                                ":ctadest, :idedest, '', '', :nomentdes, " +
+                                "CURRENT YEAR TO SECOND, :valtrans, :valcmsion, :destrans)";
+                        Query qInsertNomExt = entityManager.createNativeQuery(sqlInsertComprobNomExt);
+                        qInsertNomExt.setParameter("codttran", codTtranRealNomExt);
+                        qInsertNomExt.setParameter("numttran", numTrans != null ? numTrans : 0);
+                        qInsertNomExt.setParameter("nomclien", nomApellido);
+                        qInsertNomExt.setParameter("codctadp", numeroCuentaEnvio);
+                        qInsertNomExt.setParameter("nomdest", titulaCtaRecibe);
+                        qInsertNomExt.setParameter("ctadest", numeroCtaDestino);
+                        qInsertNomExt.setParameter("idedest", cedulaCtaRecibe);
+                        qInsertNomExt.setParameter("nomentdes", bancoDest2);
+                        qInsertNomExt.setParameter("valtrans", valTransferencia);
+                        qInsertNomExt.setParameter("valcmsion", totalComision != null ? totalComision : new java.math.BigDecimal("0.41"));
+                        qInsertNomExt.setParameter("destrans", detalleNomExt);
+                        qInsertNomExt.executeUpdate();
+                        System.out.println("DEBUG NOM-EXT: Comprobante registrado en andcomprob numttran=[" + numTrans + "] cta=[" + numeroCuentaEnvio + "]");
+                    } catch (Exception exNomExt) {
+                        System.out.println("Aviso al registrar en andcomprob (nomina externa): " + exNomExt.getMessage());
                     }
 
                     // COMMIT REQUIRES_CAPTEC: libera todos los bloqueos de escritura inmediatamente
@@ -3210,6 +3491,119 @@ public class NominasService {
         } catch (Exception exVal) {
             transactionManager.rollback(statusError);
             System.out.println("No se pudo actualizar la transferencia a estado 3: " + exVal.getMessage());
+        }
+    }
+
+    public ResponseEntity<Map<String, Object>> enviarCorreoNotificacionPdf(HttpServletRequest request, Authentication authentication, NominasEmailRequestDTO requestData) {
+        System.out.println("=== DEBUG CORREO NOTIFICACION ===");
+        System.out.println("Recibida petición para enviar correo. Evento: " + requestData.getTipoEvento());
+        Map<String, Object> response = new HashMap<>();
+        try {
+            String token = Obtenertoken.desdeCookie(request);
+            if (token == null || authentication == null || !authentication.isAuthenticated()) {
+                System.out.println("DEBUG CORREO: Token no válido o usuario no autenticado.");
+                response.put("status", "AA028");
+                response.put("errors", "Sesión inválida o token no encontrado.");
+                return new ResponseEntity<>(response, HttpStatus.UNAUTHORIZED);
+            }
+
+            String clienIdenti = jwtUtil.getrucIdenClie(token);
+            String username = jwtUtil.getUsernameFromToken(token);
+            System.out.println("=================================================");
+            System.out.println("=== DEBUG CORREO NOTIFICACION NOMINA - INICIO ===");
+            System.out.println("=================================================");
+            System.out.println("DEBUG CORREO: Token RUC/Cedula=" + clienIdenti + ", Username=" + username);
+
+            // OBTENER EXCLUSIVAMENTE EL CORREO DE andusvco (usvco_ema_usvco)
+            String emailDestino = "";
+
+            // Intento 1: por cedula de cliente y username
+            try {
+                String sql1 = "SELECT usvco_ema_usvco FROM andusvco WHERE TRIM(usvco_ide_clien) = :cedula AND TRIM(usvco_ide_usvco) = :user";
+                Query q1 = entityManager.createNativeQuery(sql1);
+                q1.setParameter("cedula", clienIdenti != null ? clienIdenti.trim() : "");
+                q1.setParameter("user", username != null ? username.trim() : "");
+                List<?> res1 = q1.getResultList();
+                if (!res1.isEmpty() && res1.get(0) != null) {
+                    emailDestino = res1.get(0).toString().trim();
+                    System.out.println("DEBUG CORREO: Encontrado en andusvco (Intento 1): " + emailDestino);
+                }
+            } catch (Exception e1) {
+                System.out.println("DEBUG CORREO: Excepción en Intento 1 andusvco: " + e1.getMessage());
+            }
+
+            // Intento 2: solo por username
+            if (emailDestino.isEmpty()) {
+                try {
+                    String sql2 = "SELECT usvco_ema_usvco FROM andusvco WHERE TRIM(usvco_ide_usvco) = :user AND usvco_ema_usvco IS NOT NULL";
+                    Query q2 = entityManager.createNativeQuery(sql2);
+                    q2.setParameter("user", username != null ? username.trim() : "");
+                    List<?> res2 = q2.getResultList();
+                    if (!res2.isEmpty() && res2.get(0) != null) {
+                        emailDestino = res2.get(0).toString().trim();
+                        System.out.println("DEBUG CORREO: Encontrado en andusvco (Intento 2): " + emailDestino);
+                    }
+                } catch (Exception e2) {
+                    System.out.println("DEBUG CORREO: Excepción en Intento 2 andusvco: " + e2.getMessage());
+                }
+            }
+
+            // Intento 3: solo por cedula
+            if (emailDestino.isEmpty()) {
+                try {
+                    String sql3 = "SELECT usvco_ema_usvco FROM andusvco WHERE TRIM(usvco_ide_clien) = :cedula AND usvco_ema_usvco IS NOT NULL";
+                    Query q3 = entityManager.createNativeQuery(sql3);
+                    q3.setParameter("cedula", clienIdenti != null ? clienIdenti.trim() : "");
+                    List<?> res3 = q3.getResultList();
+                    if (!res3.isEmpty() && res3.get(0) != null) {
+                        emailDestino = res3.get(0).toString().trim();
+                        System.out.println("DEBUG CORREO: Encontrado en andusvco (Intento 3): " + emailDestino);
+                    }
+                } catch (Exception e3) {
+                    System.out.println("DEBUG CORREO: Excepción en Intento 3 andusvco: " + e3.getMessage());
+                }
+            }
+
+            System.out.println("DEBUG CORREO: EMAIL DESTINO FINAL (usvco_ema_usvco): [" + emailDestino + "]");
+
+            if (emailDestino.isEmpty()) {
+                System.out.println("DEBUG CORREO ERROR: No se encontró correo en andusvco (usvco_ema_usvco) para el usuario/cédula.");
+                response.put("success", false);
+                response.put("message", "No se encontró el correo electrónico del usuario (usvco_ema_usvco).");
+                return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+            }
+
+            String base64Data = requestData.getPdfBase64();
+            if (base64Data != null && base64Data.contains(",")) {
+                base64Data = base64Data.split(",")[1];
+            }
+            byte[] pdfBytes = java.util.Base64.getDecoder().decode(base64Data);
+            System.out.println("DEBUG CORREO: PDF decodificado correctamente. Tamaño (bytes): " + pdfBytes.length);
+
+            String tipoEvento = requestData.getTipoEvento() != null ? requestData.getTipoEvento().toUpperCase() : "CARGA";
+            boolean esAcreditacion = tipoEvento.contains("ACREDIT");
+
+            String tituloEncabezado = esAcreditacion ? "NOTIFICACIÓN DE ACREDITACIÓN DE NÓMINA" : "NOTIFICACIÓN DE CARGA DE NÓMINA";
+            String textoCuerpo = esAcreditacion
+                    ? "COOPERATIVA DE AHORRO Y CRÉDITO ANDINA Ltda., le informa que se ha generado con éxito el comprobante de su acreditación de nómina."
+                    : "COOPERATIVA DE AHORRO Y CRÉDITO ANDINA Ltda., le informa que se ha generado con éxito el comprobante de su carga de nómina.";
+
+            String mensajeHtml = "<!DOCTYPE html><html lang='es'><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width, initial-scale=1.0'><title>Correo</title><style>.container { margin: 20px auto; max-width: 600px; padding: 20px; border: 1px solid #ccc; border-radius: 10px; font-family: Arial, sans-serif; }.header { text-align: center; color: #f29f05; }.header h2 { font-size: 18px; margin: 10px 0; }.content { margin: 20px 0; }.content h1 { font-size: 16px; color: #333; }.content p { font-size: 14px; color: #555; line-height: 1.5; text-align: justify; }.options { font-size: 14px; color: #555; margin: 20px 0; }.options ul { padding-left: 20px; }.options li { margin-bottom: 10px; }.footer { text-align: center; font-size: 12px; color: #aaa; margin-top: 20px; }.button-container { text-align: center; margin: 20px 0; }.button-container a { display: inline-block; padding: 10px 20px; background-color: #6868ff; color: #fff; text-decoration: none; border-radius: 5px; }</style></head><body><div class='container'><div class='header'><h2>" + tituloEncabezado + "</h2></div><div class='content'><h1>Estimado(a) Cliente</h1><p>" + textoCuerpo + "</p><p>Adjunto a este correo electrónico encontrará el archivo PDF con el detalle correspondiente.</p><p>Recuerde que es su responsabilidad el cuidado de la información de acceso al VIRTUALCOOP. Por ningún motivo la comparta con terceros.</p></div><div class='button-container'><a href='https://www.coopandina.fin.ec/'>Ir a la página</a></div><div class='footer'><p>@COAC Andina Ltda</p></div></div></body></html>";
+
+            envioCorreoNomina.enviarCorreoConPdf(emailDestino, requestData.getAsunto(), mensajeHtml, pdfBytes, requestData.getNombreArchivo());
+            System.out.println("DEBUG CORREO: Correo enviado a " + emailDestino + " a través del servidor SMTP.");
+
+            response.put("success", true);
+            response.put("message", "Correo enviado correctamente.");
+            return new ResponseEntity<>(response, HttpStatus.OK);
+
+        } catch (Exception e) {
+            System.out.println("DEBUG CORREO ERROR: Excepción al enviar correo: " + e.getMessage());
+            e.printStackTrace();
+            response.put("success", false);
+            response.put("message", "Error al enviar el correo.");
+            response.put("error", e.getMessage());
+            return new ResponseEntity<>(response, HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
 

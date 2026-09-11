@@ -18,6 +18,7 @@ public class NominasUtils {
     private String numnomina;
     private String codreg;
     private String descripcion;
+    private String desTrans;
     private String ideClien;
     private String ctaDestino;
     private String ctaOrigen;

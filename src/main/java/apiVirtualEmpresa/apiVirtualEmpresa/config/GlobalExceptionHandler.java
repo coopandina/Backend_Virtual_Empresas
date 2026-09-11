@@ -48,6 +48,8 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<Map<String, Object>> handleAllExceptions(Exception ex) {
+        System.out.println("=== GLOBAL EXCEPTION HANDLER CAPTURO ERROR EN ENDPOINT ===");
+        ex.printStackTrace();
         Map<String, Object> response = new HashMap<>();
         SqlErrorInfo sqlInfo = getRootSqlError(ex);
 
@@ -58,7 +60,7 @@ public class GlobalExceptionHandler {
         } else if (ex.toString().contains("UnexpectedRollbackException")) {
             setError(response, "La transacción fue revertida inesperadamente en el servidor de base de datos.", "ERROR_TRANSACCION_REVERTIDA");
         } else {
-            setError(response, "Error interno del servidor", "ERROR_DESCONOCIDO");
+            setError(response, "Error interno del servidor: " + ex.getMessage(), "ERROR_DESCONOCIDO");
         }
 
         response.put("success", false);

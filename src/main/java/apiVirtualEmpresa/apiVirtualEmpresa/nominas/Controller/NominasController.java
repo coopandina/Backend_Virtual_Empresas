@@ -86,4 +86,10 @@ public class NominasController {
         return nominasService.genCodNomExterna(request, authentication, requestData);
     }
 
+    //enviar correo de notificacion con PDF adjunto
+    @PostMapping("/enviarCorreoNotificacion")
+    public ResponseEntity<Map<String, Object>> enviarCorreoNotificacionPdf(HttpServletRequest request, Authentication authentication, @RequestBody apiVirtualEmpresa.apiVirtualEmpresa.nominas.dto.NominasEmailRequestDTO requestData) {
+        return nominasService.enviarCorreoNotificacionPdf(request, authentication, requestData);
+    }
+
 }

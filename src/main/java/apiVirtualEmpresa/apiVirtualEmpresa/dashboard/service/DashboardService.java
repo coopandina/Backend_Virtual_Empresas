@@ -15,6 +15,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.RequestBody;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.*;
 
@@ -683,7 +684,7 @@ public class DashboardService {
                 return new ResponseEntity<>(response, HttpStatus.UNAUTHORIZED);
             }
 
-            // Modificado por Brayan Pallango - SQL ampliado con caja, documento, composicion y tipo
+            // Modificado por Brayan Pallango - SQL ampliado con caja, documento, composicion, tipo y des_trans (andplina / andplexa)
             // kguanoluisa, [Se agregaron campos motivo (mctad_rzn_anula) y observacion (pmdep_det_pmdep) para replicar detalle del sistema legado][2026-09-04]
             String sql = """
                        SELECT
@@ -697,7 +698,10 @@ public class DashboardService {
                            t.ttran_abr_ttran        AS abr_ttran,
                            m.mctad_num_ttran        AS num_ttran,
                            m.mctad_rzn_anula        AS motivo,
-                           p.pmdep_det_pmdep        AS observacion
+                           p.pmdep_det_pmdep        AS observacion,
+                           pl.plina_des_trans       AS des_trans_int,
+                           px.plexa_des_trans       AS des_trans_ext,
+                           m.mctad_cod_ttran        AS cod_ttran
                        FROM cnxdmcta d
                        JOIN cnxtmovi mv ON mv.tmovi_cod_tmovi = d.dmcta_cod_tmovi
                        JOIN cnxcajas cj ON cj.cajas_cod_cajas = d.dmcta_cod_cajas
@@ -713,6 +717,10 @@ public class DashboardService {
                                           AND p.pmdep_cod_ofici  = m.mctad_cod_ofici
                                           AND p.pmdep_cod_ttran  = m.mctad_cod_ttran
                                           AND p.pmdep_num_ttran  = m.mctad_num_ttran
+                       LEFT JOIN andplina pl ON pl.plina_num_trans = m.mctad_num_ttran
+                                          AND (pl.plina_cod_ctaor = d.dmcta_cod_ctadp OR pl.plina_cod_ctade = d.dmcta_cod_ctadp)
+                       LEFT JOIN andplexa px ON px.plexa_num_trans = m.mctad_num_ttran
+                                          AND (px.plexa_cod_ctaor = d.dmcta_cod_ctadp OR px.plexa_cod_ctade = d.dmcta_cod_ctadp)
                        WHERE DATE(d.dmcta_fec_mctad) BETWEEN :fechaInicio AND :fechaFin
                          AND d.dmcta_cod_ctadp = :codCta
                        ORDER BY d.dmcta_fec_mctad ASC
@@ -777,7 +785,11 @@ public class DashboardService {
                     saldoAcumulado += valor;
                 }
 
-                // Composicion = abr_ttran - num_ttran (ej: SRIVA - 000172)
+                // Composicion / Detalle Transaccion de andplina / andplexa
+                String desTransInt = (row.length > 11 && row[11] != null) ? row[11].toString().trim() : "";
+                String desTransExt = (row.length > 12 && row[12] != null) ? row[12].toString().trim() : "";
+                String desTransVal = !desTransInt.isEmpty() ? desTransInt : desTransExt;
+
                 String abrTtran = row[7] != null ? row[7].toString().trim() : "";
                 String numTtran = "000000";
                 if (row[8] != null) {
@@ -787,25 +799,48 @@ public class DashboardService {
                     } catch (Exception e) {}
                 }
                 
-                String composicion = abrTtran.isEmpty() ? "-" : abrTtran + " - " + numTtran;
+                String composicion = !desTransVal.isEmpty() ? desTransVal : (abrTtran.isEmpty() ? "-" : abrTtran + " - " + numTtran);
 
                 String motivoVal = row[9] != null ? row[9].toString().trim() : "";
                 String obsVal = row[10] != null ? row[10].toString().trim() : "";
                 String descVal = row[3] != null ? row[3].toString().trim() : "";
 
-                String detalleFinal = !obsVal.isEmpty() ? obsVal : (!motivoVal.isEmpty() ? motivoVal : descVal);
+                String detalleBase = !obsVal.isEmpty() ? obsVal : (!motivoVal.isEmpty() ? motivoVal : descVal);
+                String detalleFinal = detalleBase;
 
-                mov.put("fecha",       row[2] != null ? row[2].toString() : "");
-                mov.put("descripcion", descVal);
-                mov.put("tipo",        tipoOperacion == 1 ? "RETIRO" : "DEPOSITO");
-                mov.put("valor",       Math.round(valor * 100.0) / 100.0);
-                mov.put("saldo",       Math.round(saldoAcumulado * 100.0) / 100.0);
-                mov.put("caja",        row[5] != null ? row[5].toString().trim() : "-");
-                mov.put("documento",   row[6] != null ? row[6].toString().trim() : "-");
-                mov.put("composicion", composicion);
-                mov.put("motivo",      detalleFinal);
-                mov.put("observacion", detalleFinal);
-                mov.put("observaciones", detalleFinal);
+                if (!desTransVal.isEmpty()) {
+                    if (!detalleFinal.contains(desTransVal)) {
+                        detalleFinal = detalleFinal.isEmpty() ? desTransVal : detalleFinal + ", " + desTransVal;
+                    } else if (detalleFinal.contains(" " + desTransVal) && !detalleFinal.contains(", " + desTransVal)) {
+                        detalleFinal = detalleFinal.replace(" " + desTransVal, ", " + desTransVal);
+                    }
+                }
+
+                mov.put("fecha",              row[2] != null ? row[2].toString() : "");
+                mov.put("descripcion",        descVal);
+                mov.put("tipo",               tipoOperacion == 1 ? "RETIRO" : "DEPOSITO");
+                mov.put("valor",              Math.round(valor * 100.0) / 100.0);
+                mov.put("saldo",              Math.round(saldoAcumulado * 100.0) / 100.0);
+                mov.put("caja",               row[5] != null ? row[5].toString().trim() : "-");
+                mov.put("documento",          row[6] != null ? row[6].toString().trim() : "-");
+                mov.put("desTrans",           desTransVal);
+                mov.put("detalleTransaccion", desTransVal);
+                mov.put("composicion",        composicion);
+                mov.put("motivo",             detalleFinal);
+                mov.put("observacion",        detalleFinal);
+                mov.put("observaciones",      detalleFinal);
+                // Campos necesarios para consultar comprobante en andcomprob
+                int numTtranRaw = 0;
+                if (row[8] != null) {
+                    try { numTtranRaw = Double.valueOf(row[8].toString().replace(",", ".")).intValue(); } catch (Exception e) {}
+                }
+                int codTtranRaw = 0;
+                if (row.length > 13 && row[13] != null) {
+                    try { codTtranRaw = Double.valueOf(row[13].toString().replace(",", ".")).intValue(); } catch (Exception e) {}
+                }
+                mov.put("numttran",  numTtranRaw);
+                mov.put("codttran",  codTtranRaw);
+                mov.put("numCuenta", codCta);
 
                 movimientos.add(mov);
             }
@@ -967,6 +1002,232 @@ public class DashboardService {
         } catch (Exception e) {
             //kguanoluisa, [Se relanza excepcion para que @Transactional haga rollback del INSERT en andaudlpdf][][2026-05-21]
             throw new RuntimeException("Error al registrar la aceptación: " + e.getMessage(), e);
+        }
+    }
+
+    public ResponseEntity<Map<String, Object>> obtenerComprobante(HttpServletRequest request, Map<String, Object> reqBody, Authentication authentication) {
+        Map<String, Object> response = new HashMap<>();
+        try {
+            System.out.println("=== DEBUG OBTENER COMPROBANTE ===");
+            System.out.println("Payload recibido en reqBody: " + reqBody);
+
+            String token = Obtenertoken.desdeCookie(request);
+            if (token == null || authentication == null || !authentication.isAuthenticated()) {
+                System.out.println("DEBUG COMPROBANTE: No autorizado (token o authentication es nulo)");
+                response.put("success", false);
+                response.put("message", "No autorizado");
+                return new ResponseEntity<>(response, HttpStatus.UNAUTHORIZED);
+            }
+
+            Object numttranObj = reqBody != null ? reqBody.get("numttran") : null;
+            Object codttranObj = reqBody != null ? reqBody.get("codttran") : null;
+            Object ctaOrigenObj = reqBody != null ? reqBody.get("numCuenta") : null;
+            Object valorObj = reqBody != null ? reqBody.get("valor") : null;
+
+            Integer numttran = null;
+            if (numttranObj != null) {
+                try {
+                    numttran = Integer.parseInt(numttranObj.toString().trim());
+                } catch (Exception e) {}
+            }
+
+            Integer codttran = null;
+            if (codttranObj != null) {
+                try {
+                    codttran = Integer.parseInt(codttranObj.toString().trim());
+                } catch (Exception e) {}
+            }
+
+            String ctaOrigen = ctaOrigenObj != null ? ctaOrigenObj.toString().trim() : null;
+            BigDecimal valor = null;
+            if (valorObj != null) {
+                try {
+                    valor = new BigDecimal(valorObj.toString().trim());
+                } catch (Exception e) {}
+            }
+
+            System.out.println("DEBUG COMPROBANTE -> Parsed params: numttran=[" + numttran + "], codttran=[" + codttran + "], ctaOrigen=[" + ctaOrigen + "], valor=[" + valor + "]");
+
+            String baseSql = "SELECT comprob_cod_comprob, comprob_cod_ttran, comprob_num_ttran, " +
+                    "TRIM(comprob_nom_clien), TRIM(comprob_cod_clienori), TRIM(comprob_cod_ctadp), " +
+                    "TRIM(comprob_des_emalori), TRIM(comprob_tlf_cliori), TRIM(comprob_nom_entori), " +
+                    "TRIM(comprob_nom_dest), TRIM(comprob_cod_cliendes), TRIM(comprob_num_ctadest), " +
+                    "TRIM(comprob_ide_dest), TRIM(comprob_des_emaldes), TRIM(comprob_tlf_clides), " +
+                    "TRIM(comprob_nom_entdes), comprob_fec_trans, comprob_val_trans, " +
+                    "comprob_val_cmsion, TRIM(comprob_des_trans) " +
+                    "FROM andcomprob ";
+
+            List<Object[]> results = new ArrayList<>();
+
+            // Intento 1: numttran + codttran
+            if (numttran != null && numttran > 0 && codttran != null && codttran > 0) {
+                String sql1 = baseSql + "WHERE comprob_num_ttran = :numttran AND comprob_cod_ttran = :codttran ORDER BY comprob_cod_comprob DESC";
+                System.out.println("DEBUG COMPROBANTE Intento 1 -> numttran=" + numttran + ", codttran=" + codttran);
+                try {
+                    Query q1 = entityManager.createNativeQuery(sql1);
+                    q1.setParameter("numttran", numttran);
+                    q1.setParameter("codttran", codttran);
+                    results = q1.getResultList();
+                    System.out.println("DEBUG COMPROBANTE Intento 1 -> Registros encontrados: " + results.size());
+                } catch (Exception e1) {
+                    System.out.println("DEBUG COMPROBANTE Error Intento 1: " + e1.getMessage());
+                }
+            }
+
+            // Intento 2: numttran solo
+            if (results.isEmpty() && numttran != null && numttran > 0) {
+                String sql2 = baseSql + "WHERE comprob_num_ttran = :numttran ORDER BY comprob_cod_comprob DESC";
+                System.out.println("DEBUG COMPROBANTE Intento 2 -> numttran=" + numttran);
+                try {
+                    Query q2 = entityManager.createNativeQuery(sql2);
+                    q2.setParameter("numttran", numttran);
+                    results = q2.getResultList();
+                    System.out.println("DEBUG COMPROBANTE Intento 2 -> Registros encontrados: " + results.size());
+                } catch (Exception e2) {
+                    System.out.println("DEBUG COMPROBANTE Error Intento 2: " + e2.getMessage());
+                }
+            }
+
+            // Intento 3: cuentaOrigen + valor
+            if (results.isEmpty() && ctaOrigen != null && !ctaOrigen.isEmpty() && valor != null) {
+                String sql3 = baseSql + "WHERE comprob_cod_ctadp = :ctaOrigen AND comprob_val_trans = :valor ORDER BY comprob_cod_comprob DESC";
+                System.out.println("DEBUG COMPROBANTE Intento 3 -> ctaOrigen=" + ctaOrigen + ", valor=" + valor);
+                try {
+                    Query q3 = entityManager.createNativeQuery(sql3);
+                    q3.setParameter("ctaOrigen", ctaOrigen);
+                    q3.setParameter("valor", valor);
+                    results = q3.getResultList();
+                    System.out.println("DEBUG COMPROBANTE Intento 3 -> Registros encontrados: " + results.size());
+                } catch (Exception e3) {
+                    System.out.println("DEBUG COMPROBANTE Error Intento 3: " + e3.getMessage());
+                }
+            }
+
+            if (!results.isEmpty()) {
+                Object[] row = results.get(0);
+                Map<String, Object> data = new HashMap<>();
+                String nomClienVal = row[3] != null ? row[3].toString().trim() : "";
+                String codClienOriVal = row[4] != null ? row[4].toString().trim() : "";
+                String ctaOriVal = row[5] != null ? row[5].toString().trim() : "";
+                String emalOriVal = row[6] != null ? row[6].toString().trim() : "";
+                String tlfOriVal = row[7] != null ? row[7].toString().trim() : "";
+                String entOriVal = row[8] != null ? row[8].toString().trim() : "";
+
+                String nomDestVal = row[9] != null ? row[9].toString().trim() : "";
+                String codClienDesVal = row[10] != null ? row[10].toString().trim() : "";
+                String ctaDestVal = row[11] != null ? row[11].toString().trim() : "";
+                String ideDestVal = row[12] != null ? row[12].toString().trim() : "";
+                String emalDesVal = row[13] != null ? row[13].toString().trim() : "";
+                String tlfDesVal = row[14] != null ? row[14].toString().trim() : "";
+                String entDesVal = row[15] != null ? row[15].toString().trim() : "";
+
+                // Rescate dinámico si faltan datos de origen
+                if (!ctaOriVal.isEmpty() && (nomClienVal.isEmpty() || codClienOriVal.isEmpty() || emalOriVal.isEmpty() || tlfOriVal.isEmpty() || entOriVal.isEmpty())) {
+                    try {
+                        String sqlOriFull = "SELECT " +
+                                "c.clien_ape_clien, " +
+                                "c.clien_nom_clien, " +
+                                "c.clien_cod_clien, " +
+                                "c.clien_dir_email, " +
+                                "c.clien_tlf_celul, " +
+                                "o.ofici_nom_ofici " +
+                                "FROM cnxctadp a " +
+                                "JOIN cnxclien c ON c.clien_cod_clien = a.ctadp_cod_clien " +
+                                "JOIN cnxofici o ON o.ofici_cod_ofici = c.clien_cod_ofici " +
+                                "WHERE a.ctadp_cod_ctadp = :cta";
+                        Query qOri = entityManager.createNativeQuery(sqlOriFull);
+                        qOri.setParameter("cta", ctaOriVal);
+                        List<Object[]> rsOri = qOri.getResultList();
+                        if (!rsOri.isEmpty()) {
+                            Object[] rOri = rsOri.get(0);
+                            String apeOri = rOri[0] != null ? rOri[0].toString().trim() : "";
+                            String nomOri = rOri[1] != null ? rOri[1].toString().trim() : "";
+                            if (nomClienVal.isEmpty()) nomClienVal = (apeOri + " " + nomOri).trim();
+                            if (codClienOriVal.isEmpty() && rOri[2] != null) codClienOriVal = rOri[2].toString().trim();
+                            if (emalOriVal.isEmpty() && rOri[3] != null) emalOriVal = rOri[3].toString().trim();
+                            if (tlfOriVal.isEmpty() && rOri[4] != null) tlfOriVal = rOri[4].toString().trim();
+                            if (entOriVal.isEmpty() && rOri[5] != null) entOriVal = rOri[5].toString().trim();
+                        }
+                    } catch (Exception exOri) {
+                        System.out.println("Aviso al rescatar datos origen: " + exOri.getMessage());
+                    }
+                }
+
+                // Rescate dinámico si faltan datos de destino
+                if (!ctaDestVal.isEmpty() && (nomDestVal.isEmpty() || codClienDesVal.isEmpty() || emalDesVal.isEmpty() || tlfDesVal.isEmpty() || entDesVal.isEmpty())) {
+                    try {
+                        String sqlDesFull = "SELECT " +
+                                "c.clien_ape_clien, " +
+                                "c.clien_nom_clien, " +
+                                "c.clien_cod_clien, " +
+                                "c.clien_dir_email, " +
+                                "c.clien_tlf_celul, " +
+                                "o.ofici_nom_ofici, " +
+                                "c.clien_ide_clien " +
+                                "FROM cnxctadp a " +
+                                "JOIN cnxclien c ON c.clien_cod_clien = a.ctadp_cod_clien " +
+                                "JOIN cnxofici o ON o.ofici_cod_ofici = c.clien_cod_ofici " +
+                                "WHERE a.ctadp_cod_ctadp = :cta";
+                        Query qDes = entityManager.createNativeQuery(sqlDesFull);
+                        qDes.setParameter("cta", ctaDestVal);
+                        List<Object[]> rsDes = qDes.getResultList();
+                        if (!rsDes.isEmpty()) {
+                            Object[] rDes = rsDes.get(0);
+                            String apeDes = rDes[0] != null ? rDes[0].toString().trim() : "";
+                            String nomDes = rDes[1] != null ? rDes[1].toString().trim() : "";
+                            if (nomDestVal.isEmpty()) nomDestVal = (apeDes + " " + nomDes).trim();
+                            if (codClienDesVal.isEmpty() && rDes[2] != null) codClienDesVal = rDes[2].toString().trim();
+                            if (emalDesVal.isEmpty() && rDes[3] != null) emalDesVal = rDes[3].toString().trim();
+                            if (tlfDesVal.isEmpty() && rDes[4] != null) tlfDesVal = rDes[4].toString().trim();
+                            if (entDesVal.isEmpty() && rDes[5] != null) entDesVal = rDes[5].toString().trim();
+                            if (ideDestVal.isEmpty() && rDes[6] != null) ideDestVal = rDes[6].toString().trim();
+                        }
+                    } catch (Exception exDes) {
+                        System.out.println("Aviso al rescatar datos destino: " + exDes.getMessage());
+                    }
+                }
+
+                data.put("codComprobante", row[0]);
+                data.put("codTtran", row[1]);
+                data.put("numTtran", row[2] != null ? String.format("%06d", Integer.parseInt(row[2].toString().trim())) : "000000");
+
+                data.put("nombreCliente", nomClienVal);
+                data.put("codigoClienteOrigen", codClienOriVal);
+                data.put("cuentaOrigen", ctaOriVal);
+                data.put("emailOrigen", emalOriVal);
+                data.put("telefonoOrigen", tlfOriVal);
+                data.put("entidadOrigen", entOriVal);
+
+                data.put("nombreBeneficiario", nomDestVal);
+                data.put("codigoClienteDestino", codClienDesVal);
+                data.put("cuentaDestino", ctaDestVal);
+                data.put("identificacionDestino", ideDestVal);
+                data.put("emailDestino", emalDesVal);
+                data.put("telefonoDestino", tlfDesVal);
+                data.put("entidadDestino", entDesVal);
+
+                data.put("fechaExacta", row[16] != null ? row[16].toString() : "");
+                data.put("monto", row[17]);
+                data.put("comision", row[18]);
+                data.put("detalleTransaccion", row[19]);
+
+                System.out.println("DEBUG COMPROBANTE EXITOSO -> Datos a devolver: " + data);
+                response.put("success", true);
+                response.put("data", data);
+                return new ResponseEntity<>(response, HttpStatus.OK);
+            }
+
+            System.out.println("DEBUG COMPROBANTE: No se encontro ninguna coincidencia en andcomprob.");
+            response.put("success", false);
+            response.put("message", "No se encontró registro del comprobante para esta transacción.");
+            return new ResponseEntity<>(response, HttpStatus.OK);
+
+        } catch (Exception e) {
+            System.out.println("=== ERROR CRITICO AL CONSULTAR COMPROBANTE ===");
+            e.printStackTrace();
+            response.put("success", false);
+            response.put("message", "Error al consultar comprobante: " + e.getMessage());
+            return new ResponseEntity<>(response, HttpStatus.OK);
         }
     }
 }

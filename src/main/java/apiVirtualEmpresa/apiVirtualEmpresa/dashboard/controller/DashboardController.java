@@ -58,4 +58,11 @@ public class DashboardController {
         return dashboardService.aceptarPoliticaDatos(request, authentication);
     }
 
+    // Endpoint para consultar comprobante completo desde andcomprob
+    @PostMapping("/obtenerComprobante")
+    public ResponseEntity<Map<String, Object>> obtenerComprobante(HttpServletRequest request, @RequestBody(required = false) Map<String, Object> reqBody, Authentication authentication) {
+        System.out.println("=== CONTROLLER: /obtenerComprobante llamado ===");
+        return dashboardService.obtenerComprobante(request, reqBody, authentication);
+    }
+
 }

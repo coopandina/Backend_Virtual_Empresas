@@ -626,7 +626,7 @@ public class TransfInterService {
                     return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
                 }
             }
-            double valorsumado = Math.round((0.36 + valTransferencia) * 100.0) / 100.0;
+            double valorsumado = Math.round((0.41 + valTransferencia) * 100.0) / 100.0;
 
             if (saldoDispoParse >= valorsumado) {
                 String sqlQuery = """
@@ -733,6 +733,73 @@ public class TransfInterService {
                     response.put("message", "TRANSFERENCIA INTERBANCARIA REALIZADA CON ÉXITO !!");
                     response.put("numTransferencia", returnValue);
                     response.put("status", "DTROK0005");
+                    // Registrar comprobante en andcomprob (interbancaria SPI individual)
+                    try {
+                        String bancoDest = "Entidad Financiera";
+                        try {
+                            String sqlBanco = "SELECT ifspi_nom_ifspi FROM cnxifspi WHERE ifspi_cod_ifspi = :codBanco";
+                            Query qBanco = entityManager.createNativeQuery(sqlBanco);
+                            qBanco.setParameter("codBanco", clieIdBancoRecibe);
+                            List<?> rsBanco = qBanco.getResultList();
+                            if (!rsBanco.isEmpty() && rsBanco.get(0) != null) {
+                                bancoDest = rsBanco.get(0).toString().trim();
+                            }
+                        } catch (Exception exB) {}
+                        String detalleSpi = "TRANSFERENCIA INTERBANCARIA A " + titulaCtaRecibe + " EN CUENTA " + numeroCtaDestino;
+                        int codTtranReal = 91;
+                        try {
+                            String sqlCodT = "SELECT mctad_cod_ttran FROM cnxmctad WHERE mctad_num_ttran = :numttran ORDER BY mctad_fec_mctad DESC FIRST 1";
+                            Query qCodT = entityManager.createNativeQuery(sqlCodT);
+                            qCodT.setParameter("numttran", returnValue);
+                            List<?> resCodT = qCodT.getResultList();
+                            if (!resCodT.isEmpty() && resCodT.get(0) != null) {
+                                codTtranReal = Integer.parseInt(resCodT.get(0).toString().trim());
+                            }
+                        } catch (Exception exCodT) {}
+
+                        BigDecimal totalComisionSpi = new BigDecimal("0.41");
+                        try {
+                            String sqlIvaSpi = "CALL andprc_cal_iva(:codEmpre, :cuenta, '0.36')";
+                            Query qIvaSpi = entityManager.createNativeQuery(sqlIvaSpi);
+                            qIvaSpi.setParameter("codEmpre", clieCodEmpresaEnvio);
+                            qIvaSpi.setParameter("cuenta", numeroCuentaEnvio);
+                            List<?> rsIvaSpi = qIvaSpi.getResultList();
+                            if (!rsIvaSpi.isEmpty() && rsIvaSpi.get(0) != null) {
+                                Object[] fIva = (Object[]) rsIvaSpi.get(0);
+                                if (fIva.length >= 3 && fIva[2] != null) {
+                                    totalComisionSpi = new BigDecimal(fIva[2].toString().trim());
+                                }
+                            }
+                        } catch (Exception exIvaS) {}
+
+                        String sqlInsertComprobSpi = "INSERT INTO andcomprob (" +
+                                "comprob_cod_ttran, comprob_num_ttran, comprob_nom_clien, comprob_cod_clienori, comprob_cod_ctadp, " +
+                                "comprob_des_emalori, comprob_tlf_cliori, comprob_nom_entori, comprob_nom_dest, comprob_cod_cliendes, " +
+                                "comprob_num_ctadest, comprob_ide_dest, comprob_des_emaldes, comprob_tlf_clides, comprob_nom_entdes, " +
+                                "comprob_fec_trans, comprob_val_trans, comprob_val_cmsion, comprob_des_trans) " +
+                                "VALUES (:codttran, :numttran, :nomclien, :codclienori, :codctadp, " +
+                                "'', '', 'Cooperativa ANDINA Ltda.', :nomdest, '', " +
+                                ":ctadest, :idedest, '', '', :nomentdes, " +
+                                "CURRENT YEAR TO SECOND, :valtrans, :valcmsion, :destrans)";
+                        Query qInsertSpi = entityManager.createNativeQuery(sqlInsertComprobSpi);
+                        qInsertSpi.setParameter("codttran", codTtranReal);
+                        qInsertSpi.setParameter("numttran", returnValue);
+                        qInsertSpi.setParameter("nomclien", nomApellido);
+                        qInsertSpi.setParameter("codclienori", clienCodEnvio);
+                        qInsertSpi.setParameter("codctadp", numeroCuentaEnvio);
+                        qInsertSpi.setParameter("nomdest", titulaCtaRecibe);
+                        qInsertSpi.setParameter("ctadest", numeroCtaDestino);
+                        qInsertSpi.setParameter("idedest", cedulaCtaRecibe);
+                        qInsertSpi.setParameter("nomentdes", bancoDest);
+                        qInsertSpi.setParameter("valtrans", valTransferencia);
+                        qInsertSpi.setParameter("valcmsion", totalComisionSpi);
+                        qInsertSpi.setParameter("destrans", detalleSpi);
+                        qInsertSpi.executeUpdate();
+                        System.out.println("DEBUG SPI: Comprobante registrado en andcomprob con numttran = [" + returnValue + "]");
+                    } catch (Exception exSpi) {
+                        System.out.println("Aviso al registrar en andcomprob (SPI individual): " + exSpi.getMessage());
+                    }
+
                     transactionManager.commit(status);
                     return new ResponseEntity<>(response, HttpStatus.OK);
                 } else {
@@ -1095,12 +1162,13 @@ public class TransfInterService {
 
             String sqlCliente = "SELECT FIRST 1 " +
                     "clien_ide_clien, " +
-                    "TRIM(clien_nom_clien) || ' ' || TRIM(clien_ape_clien) AS nombre_completo, " +
+                    "TRIM(clien_ape_clien) || ' ' || TRIM(clien_nom_clien) AS nombre_completo, " +
                     "usvco_ema_usvco, " +
                     "usvco_tlf_usvco, " +
                     "clien_cod_empre, " +
                     "clien_cod_ofici, " +
-                    "ctadp_cod_depos " +
+                    "ctadp_cod_depos, " +
+                    "clien_cod_clien " +
                     "FROM cnxctadp, cnxclien, andusvco " +
                     "WHERE ctadp_cod_ctadp = :ctaEnvio " +
                     "AND ctadp_cod_depos IN (1, 9) " +
@@ -1141,20 +1209,22 @@ public class TransfInterService {
             Integer clientCodEmpre = clienteData[4] != null ? Integer.valueOf(clienteData[4].toString().trim()) : 69;
             Integer clientCodOfici = clienteData[5] != null ? Integer.valueOf(clienteData[5].toString().trim()) : 1;
             Integer clientCodDepos = clienteData[6] != null ? Integer.valueOf(clienteData[6].toString().trim()) : 1;
+            String clientCodClien = clienteData[7] != null ? clienteData[7].toString().trim() : "";
 
             System.out.println("DEBUG DIRECTAS: Datos cliente recuperados -> ID: " + clientIdentification + ", Nombre: " + clientName + ", Oficina: " + clientCodOfici + ", Deposito: " + clientCodDepos);
 
-            // Truncar datos a los límites aceptados por CAPTEC (31 caracteres para nombre, 16 para descripción)
-            if (clientName.length() > 31) {
-                clientName = clientName.substring(0, 31).trim();
-                System.out.println("DEBUG DIRECTAS: Nombre de cliente truncado a 31 caracteres: [" + clientName + "]");
+            // Truncar datos solo para el DTO enviado a la pasarela CAPTEC (31 caracteres para nombre, 16 para descripción)
+            String captecClientName = clientName;
+            if (captecClientName.length() > 31) {
+                captecClientName = captecClientName.substring(0, 31).trim();
+                System.out.println("DEBUG DIRECTAS: Nombre de cliente truncado a 31 caracteres para CAPTEC: [" + captecClientName + "]");
             }
 
             if (dto.getDestinationAccount() != null && dto.getDestinationAccount().getAccountHolder() != null) {
                 String destName = dto.getDestinationAccount().getAccountHolder();
                 if (destName.length() > 31) {
                     dto.getDestinationAccount().setAccountHolder(destName.substring(0, 31).trim());
-                    System.out.println("DEBUG DIRECTAS: Nombre de beneficiario truncado a 31 caracteres: [" + dto.getDestinationAccount().getAccountHolder() + "]");
+                    System.out.println("DEBUG DIRECTAS: Nombre de beneficiario truncado a 31 caracteres para CAPTEC: [" + dto.getDestinationAccount().getAccountHolder() + "]");
                 }
             }
 
@@ -1270,9 +1340,7 @@ public class TransfInterService {
 
             java.util.Date now = metodoPagoClientService.obtenerFechaHoraBD();
             String finalTxDate = metodoPagoClientService.generateTxDate(now);
-            String finalTxId = metodoPagoClientService.generateTxId(now);
             dto.setTxDate(finalTxDate);
-            dto.setTxId(finalTxId);
 
             String sourceIdentType = clientIdentification.length() == 13 ? "20"
                     : (clientIdentification.length() == 10 ? "10" : "30");
@@ -1355,6 +1423,27 @@ public class TransfInterService {
                 transactionManager.rollback(status);
                 return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
             }
+
+            // Calcular el IVA sobre la comisión obtenida de cnxcomic/andcmcempr usando el procedimiento andprc_cal_iva
+            try {
+                String sqlIva = "CALL andprc_cal_iva(:codEmpre, :cuenta, :comision)";
+                Query queryIva = entityManager.createNativeQuery(sqlIva);
+                queryIva.setParameter("codEmpre", clientCodEmpre);
+                queryIva.setParameter("cuenta", ctaEnvio);
+                queryIva.setParameter("comision", valComision.toString());
+                List<?> rsIva = queryIva.getResultList();
+                if (!rsIva.isEmpty() && rsIva.get(0) != null) {
+                    Object[] filaIva = (Object[]) rsIva.get(0);
+                    if (filaIva.length >= 3 && filaIva[2] != null) {
+                        BigDecimal totalConIva = new BigDecimal(filaIva[2].toString().trim());
+                        System.out.println("DEBUG DIRECTAS: Comisión base = [" + valComision + "], Comisión + IVA (andprc_cal_iva) = [" + totalConIva + "]");
+                        valComision = totalConIva;
+                    }
+                }
+            } catch (Exception exIva) {
+                System.out.println("DEBUG DIRECTAS: Aviso al calcular IVA con andprc_cal_iva: " + exIva.getMessage());
+            }
+
             dto.setComission(valComision);
 
             String oficinaNombre = "QUITO";
@@ -1450,7 +1539,9 @@ public class TransfInterService {
             }
 
             // 4. DEBITAR EL IVA Y REGISTRAR LA FACTURA DE LA COMISIÓN
-            // System.out.println("DEBUG DIRECTAS: Llamando a grabar2 para debitar IVA e ingresar factura...");
+            // [kguanoluisa] - Se comenta la llamada a grabar2 / andsp_reg_nddct_iva ya que en transferencias directas
+            // la pasarela Captec / Core debita la comisión total con IVA incluido, evitando el cobro duplicado de $0.05. - 09/09/2026
+            /*
             ResponseEntity<Map<String, Object>> grabar2Response = grabar2(
                     clientCodEmpre.toString(),
                     clientCodOfici.toString(),
@@ -1471,6 +1562,7 @@ public class TransfInterService {
                 transactionManager.rollback(status);
                 return grabar2Response;
             }
+            */
 
             // 5. ACTUALIZAR ESTADO DEL TOKEN A USADO (0)
             String sqlUpdatesToken = "UPDATE vircodaccess " +
@@ -1485,8 +1577,83 @@ public class TransfInterService {
             queryUpdatesToken.setParameter("usuario", rucUsuVirtu);
             queryUpdatesToken.executeUpdate();
 
-            // Resetear contador de intentos
-            intentosRealizadoTokenFallosInterban = 0;
+            // Registrar comprobante en andcomprob
+            try {
+                String numttranStr = (gatewayResponse.getResult() != null && gatewayResponse.getResult().getNumttran() != null)
+                        ? gatewayResponse.getResult().getNumttran().trim()
+                        : "0";
+                Integer numttranInt = 0;
+                try {
+                    numttranInt = Integer.parseInt(numttranStr);
+                } catch (Exception exNum) {}
+
+                String destHolder = (dto.getDestinationAccount() != null && dto.getDestinationAccount().getAccountHolder() != null)
+                        ? dto.getDestinationAccount().getAccountHolder()
+                        : "";
+                String destIdent = (dto.getDestinationAccount() != null && dto.getDestinationAccount().getIdentificationNumber() != null)
+                        ? dto.getDestinationAccount().getIdentificationNumber()
+                        : "";
+                String destAccountNum = (dto.getDestinationAccount() != null && dto.getDestinationAccount().getAccountNumber() != null)
+                        ? dto.getDestinationAccount().getAccountNumber()
+                        : "";
+
+                String destBank = "Entidad Financiera";
+                if (dto.getDestinationAccount() != null && dto.getDestinationAccount().getFiCode() != null) {
+                    try {
+                        String sqlFi = "SELECT etcptec_des_entid FROM andetcptec WHERE etcptec_cod_recept = :fiCode";
+                        Query qFi = entityManager.createNativeQuery(sqlFi);
+                        qFi.setParameter("fiCode", dto.getDestinationAccount().getFiCode());
+                        List<?> rsFi = qFi.getResultList();
+                        if (!rsFi.isEmpty() && rsFi.get(0) != null) {
+                            destBank = rsFi.get(0).toString().trim();
+                        }
+                    } catch (Exception exFi) {}
+                }
+
+                String detalleConsolidado = "TRANSFERENCIA INTERBANCARIA DIRECTA A " + destHolder + " EN CUENTA " + destAccountNum;
+
+                int codTtranReal = 91;
+                try {
+                    String sqlCodT = "SELECT mctad_cod_ttran FROM cnxmctad WHERE mctad_num_ttran = :numttran ORDER BY mctad_fec_mctad DESC FIRST 1";
+                    Query qCodT = entityManager.createNativeQuery(sqlCodT);
+                    qCodT.setParameter("numttran", numttranInt);
+                    List<?> resCodT = qCodT.getResultList();
+                    if (!resCodT.isEmpty() && resCodT.get(0) != null) {
+                        codTtranReal = Integer.parseInt(resCodT.get(0).toString().trim());
+                    }
+                } catch (Exception exCodT) {}
+
+                String sqlInsertComprob = "INSERT INTO andcomprob (" +
+                        "comprob_cod_ttran, comprob_num_ttran, comprob_nom_clien, comprob_cod_clienori, comprob_cod_ctadp, " +
+                        "comprob_des_emalori, comprob_tlf_cliori, comprob_nom_entori, comprob_nom_dest, comprob_cod_cliendes, " +
+                        "comprob_num_ctadest, comprob_ide_dest, comprob_des_emaldes, comprob_tlf_clides, comprob_nom_entdes, " +
+                        "comprob_fec_trans, comprob_val_trans, comprob_val_cmsion, comprob_des_trans) " +
+                        "VALUES (:codttran, :numttran, :nomclien, :codclienori, :codctadp, " +
+                        ":emalori, :tlfori, 'Cooperativa ANDINA Ltda.', :nomdest, '', " +
+                        ":ctadest, :idedest, '', '', :nomentdes, " +
+                        "CURRENT YEAR TO SECOND, :valtrans, :valcmsion, :destrans)";
+
+                Query qInsert = entityManager.createNativeQuery(sqlInsertComprob);
+                qInsert.setParameter("codttran", codTtranReal);
+                qInsert.setParameter("numttran", numttranInt);
+                qInsert.setParameter("nomclien", clientName);
+                qInsert.setParameter("codclienori", clientCodClien);
+                qInsert.setParameter("codctadp", ctaEnvio);
+                qInsert.setParameter("emalori", clientEmail != null ? clientEmail : "");
+                qInsert.setParameter("tlfori", clientCellphone != null ? clientCellphone : "");
+                qInsert.setParameter("nomdest", destHolder);
+                qInsert.setParameter("ctadest", destAccountNum);
+                qInsert.setParameter("idedest", destIdent);
+                qInsert.setParameter("nomentdes", destBank);
+                qInsert.setParameter("valtrans", dto.getAmount());
+                qInsert.setParameter("valcmsion", valComision != null ? valComision : new BigDecimal("0.41"));
+                qInsert.setParameter("destrans", detalleConsolidado);
+
+                qInsert.executeUpdate();
+                System.out.println("DEBUG DIRECTAS: Comprobante registrado en andcomprob con numttran = [" + numttranInt + "]");
+            } catch (Exception exComprob) {
+                System.out.println("Aviso al registrar en andcomprob: " + exComprob.getMessage());
+            }
 
             transactionManager.commit(status);
 
